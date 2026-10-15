@@ -549,6 +549,24 @@ body.spot .wrap{position:relative; z-index:1}
 
 .addg{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px}
 .addg input{flex:1 1 240px; min-width:0; font:inherit; color:var(--text); background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:12px; padding:10px 14px}
+
+/* ---- Tela de entrada (login) ---- */
+body.gate .sound > *:not(#userbox), body.gate .foot{display:none!important}
+body.gate #userbox{display:none}
+.gate-wrap{min-height:calc(100vh - 140px); display:grid; place-items:center; padding-block:12px}
+.gate-card{position:relative; width:min(460px,100%); text-align:center; display:grid; justify-items:center; gap:12px; padding:36px 28px 30px; border-radius:24px; background:radial-gradient(420px 240px at 50% 0%, rgba(129,206,238,.22), rgba(129,206,238,0) 70%), linear-gradient(180deg, var(--panel), var(--stage-2)); border:1.5px solid rgba(129,206,238,.45); box-shadow:0 24px 60px rgba(0,0,0,.4)}
+.gate-logo{width:96px; height:auto; filter:drop-shadow(0 8px 22px rgba(50,163,221,.55))}
+@media (prefers-reduced-motion:no-preference){ .gate-logo{animation:bob 1.6s ease-in-out infinite alternate} }
+.gate-title{font-family:var(--f-display); font-weight:800; font-size:clamp(34px,8vw,48px); line-height:1; margin:4px 0 0}
+.gate-title em{font-style:normal; color:var(--ice)}
+.gate-sub{margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted)}
+.gate-text{margin:6px 0 4px; color:var(--text); max-width:36ch}
+.gbtn.big{padding:14px 26px; font-size:17px; gap:12px}
+.gbtn.big .g{width:28px; height:28px; font-size:15px}
+.gate-warn{margin:0; font-size:14px; color:#ffc58a; max-width:40ch}
+.gate-note{margin:4px 0 0; font-size:13px; color:var(--muted); max-width:38ch}
+.gate-prizes{list-style:none; margin:6px 0 0; padding:12px 16px; border-radius:14px; background:rgba(242,193,78,.10); border:1px dashed rgba(242,193,78,.5); display:grid; gap:4px; font-size:14px; font-weight:600}
+.gate-wait{display:flex; align-items:center; gap:10px; color:var(--muted); margin:0}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1338,8 +1356,29 @@ async function certificate(){
 }
 
 /* ================= Telas ================= */
+/* Tela de entrada: só login com Google. O jogo só abre depois de entrar. */
+function gateHTML(){
+  const logo=(document.querySelector(".logo img")||{}).src||"";
+  if(!AUTH.ready||!CAPS_READY) return '<section class="gate-wrap"><div class="gate-card"><img class="gate-logo" src="'+logo+'" alt=""><p class="gate-wait"><span class="pulse-dot"></span> Carregando…</p></div></section>';
+  const inApp=/Instagram|FBAN|FBAV|WhatsApp|Line\/|; wv\)/i.test(navigator.userAgent||"");
+  const err=AUTH.error&&AUTH.error!=="sem-config"&&AUTH.error!=="sem-sdk"&&AUTH.error!=="auth/popup-closed-by-user"?loginErr(AUTH.error):"";
+  return '<section class="gate-wrap"><div class="gate-card">'+
+    '<img class="gate-logo" src="'+logo+'" alt="Logo AgriX">'+
+    '<h1 class="gate-title">Show do <em>AgriX</em></h1>'+
+    '<p class="gate-sub">Treinamento da equipe</p>'+
+    '<p class="gate-text">Entre com a sua conta Google para jogar, salvar seus resultados e disputar o ranking do mês.</p>'+
+    '<button class="gbtn big" data-act="login"><span class="g">G</span>Entrar com Google</button>'+
+    (inApp?'<p class="gate-warn">⚠️ Você abriu o link dentro de outro aplicativo. Se o login não abrir, toque nos três pontinhos e escolha <b>Abrir no navegador</b> (Chrome ou Safari).</p>':'')+
+    (err?'<p class="gate-warn">⚠️ '+esc(err)+'</p>':'')+
+    '<p class="gate-note">No primeiro acesso, o gestor aprova a sua conta para os resultados valerem no ranking.</p>'+
+    '<ul class="gate-prizes"><li>🥇 1º do mês: café da manhã na Padaria Moinho</li><li>🥈 2º do mês: um Day Off</li></ul>'+
+  '</div></section>';
+}
 function render(){
   const app=$("#app");
+  const gated=!!FB_CONFIG&&!AUTH.user;
+  document.body.classList.toggle("gate", gated);
+  if(gated){ app.innerHTML=gateHTML(); return; }
   document.body.classList.toggle("spot", S.screen==="jogo"&&G&&isMillion());
   if(S.screen==="inicio") app.innerHTML=homeHTML();
   else if(S.screen==="jogo"){ app.innerHTML=gameHTML(); G.enter=false; }
