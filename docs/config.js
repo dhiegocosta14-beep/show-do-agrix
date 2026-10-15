@@ -19,4 +19,4 @@ const DOMINIO_LIBERADO = "";
 
 // Aviso por e-mail aos gestores quando alguém novo pede acesso.
 // Cole aqui o endereço do App da Web do Google Apps Script (termina em /exec). Vazio = sem e-mail.
-const AVISO_EMAIL_URL = "";
+const AVISO_EMAIL_URL = "https://script.google.com/macros/s/AKfycbzhBzQBTH9Y69aEYHqrHfGeE3GmK4gOEiPNMgOpgT1JiFdPJpP5WNfdlV2bUvA0fKPn/exec";
