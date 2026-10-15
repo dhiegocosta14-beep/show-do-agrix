@@ -567,6 +567,9 @@ body.gate #userbox{display:none}
 .gate-note{margin:4px 0 0; font-size:13px; color:var(--muted); max-width:38ch}
 .gate-prizes{list-style:none; margin:6px 0 0; padding:12px 16px; border-radius:14px; background:rgba(242,193,78,.10); border:1px dashed rgba(242,193,78,.5); display:grid; gap:4px; font-size:14px; font-weight:600}
 .gate-wait{display:flex; align-items:center; gap:10px; color:var(--muted); margin:0}
+.gate-card .btn.ghost.small{margin-top:4px}
+.gate-wait{font-size:14px; max-width:38ch; text-align:left}
+.gate-mail{text-transform:none; letter-spacing:0}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1045,6 +1048,13 @@ async function ensureProfile(u){
   }
   AUTH.status=AUTH.admin?"aprovado":AUTH.profile.status;
   if(AUTH.status==="pendente"&&!AUTH.profile.avisoEm&&snap.exists) avisarGestores(u, ref);
+  // Enquanto não for aprovado, acompanha o perfil: quando o gestor aprovar, o jogo libera sozinho.
+  if(AUTH.status!=="aprovado") ref.onSnapshot(d=>{ const st=((d&&d.data())||{}).status; if(st&&st!==AUTH.status){ if(st==="aprovado") location.reload(); else { AUTH.status=st; AUTH.profile.status=st; if(typeof render==="function") render(); } } }, ()=>{});
+}
+async function recheckStatus(){
+  if(!fdb||!AUTH.user) return false;
+  try{ const d=await fdb.collection("usuarios").doc(AUTH.user.uid).get({source:"server"}); const st=((d.exists&&d.data())||{}).status; if(st==="aprovado"){ location.reload(); return true; } if(st){ AUTH.status=st; AUTH.profile.status=st; } }catch(e){}
+  return false;
 }
 /* Avisa os gestores por e-mail que alguém novo pediu acesso (via Google Apps Script do gestor).
    O script confere no Firestore, com o token da própria pessoa, que o pedido é real e manda um só e-mail por pessoa. */
@@ -1541,11 +1551,30 @@ function gateHTML(){
     '<p class="gate-note">No primeiro acesso, o gestor aprova a sua conta para os resultados valerem no ranking.</p>'+
   '</div></section>';
 }
+/* Tela de espera: entrou com Google, mas o gestor ainda não aprovou (ou recusou). O jogo fica bloqueado. */
+function waitHTML(){
+  const logo=(document.querySelector(".logo img")||{}).src||"";
+  const p=AUTH.profile||{}, nome=firstName(p.nome)||"";
+  const rec=AUTH.status==="recusado";
+  return '<section class="gate-wrap"><div class="gate-card">'+
+    '<img class="gate-logo" src="'+logo+'" alt="Logo AgriX">'+
+    '<h1 class="gate-title">'+(rec?'Acesso não liberado':'Aguardando aprovação')+'</h1>'+
+    '<p class="gate-sub gate-mail">'+esc(p.email||"")+'</p>'+
+    (rec
+      ?'<p class="gate-text">Olá'+(nome?', '+esc(nome):'')+'. O gestor não liberou o seu acesso ao Show do AgriX. Se achar que é um engano, fale com ele.</p>'
+      :'<p class="gate-text">Olá'+(nome?', '+esc(nome):'')+'! Seu cadastro foi recebido e está aguardando a aprovação do gestor. Os gestores já foram avisados por e-mail.</p>'+
+       '<p class="gate-wait"><span class="pulse-dot"></span> Esta tela libera o jogo sozinha assim que o gestor aprovar.</p>'+
+       '<button class="btn" data-act="recheck">Verificar agora</button>')+
+    '<button class="btn ghost small" data-act="logout-now">Entrar com outra conta</button>'+
+  '</div></section>';
+}
 function render(){
   const app=$("#app");
   const gated=!!FB_CONFIG&&!AUTH.user;
-  document.body.classList.toggle("gate", gated);
+  const waiting=!!FB_CONFIG&&!!AUTH.user&&AUTH.ready&&!AUTH.admin&&AUTH.status!=="aprovado";
+  document.body.classList.toggle("gate", gated||waiting);
   if(gated){ app.innerHTML=gateHTML(); return; }
+  if(waiting){ app.innerHTML=waitHTML(); return; }
   document.body.classList.toggle("spot", S.screen==="jogo"&&G&&isMillion());
   if(S.screen==="inicio") app.innerHTML=homeHTML();
   else if(S.screen==="jogo"){ app.innerHTML=gameHTML(); G.enter=false; }
@@ -2040,6 +2069,8 @@ document.addEventListener("click", e=>{
   if(act==="panel"){ if(LIVE.role) liveClose().then(loadPanel); else { stopTimer(); musicStop(); loadPanel(); } return; }
   if(act==="panel-refresh"){ loadPanel(); return; }
   if(act==="login"){ loginGoogle(); return; }
+  if(act==="logout-now"){ logout(); return; }
+  if(act==="recheck"){ b.disabled=true; b.textContent="Verificando…"; recheckStatus().then(ok=>{ if(!ok){ toast('<b>Ainda aguardando</b><span>O gestor ainda não aprovou o seu acesso.</span>'); render(); } }); return; }
   if(act==="gestor-del"){ const e=b.dataset.email; confirmBox("Remover gestor?", e+" deixa de aprovar pessoas e de comandar o telão.", "Sim, remover", "Cancelar", ()=>saveGestores((PANEL.gestores||[]).filter(x=>x!==e), "Gestor removido")); return; }
   if(act==="logout"){ confirmBox("Sair da sua conta?","Você volta para a tela inicial sem login.","Sim, sair","Cancelar",()=>logout()); return; }
   if(act==="approve"||act==="reject"||act==="revoke"){ const st={approve:"aprovado",reject:"recusado",revoke:"pendente"}[act];
