@@ -16,3 +16,7 @@ const GESTORES = ["dhiegocosta14@gmail.com"];
 // Opcional: domínio de e-mail da empresa liberado automaticamente (ex.: "suaempresa.com.br").
 // Deixe vazio para aprovar cada pessoa no Painel do gestor.
 const DOMINIO_LIBERADO = "";
+
+// Aviso por e-mail aos gestores quando alguém novo pede acesso.
+// Cole aqui o endereço do App da Web do Google Apps Script (termina em /exec). Vazio = sem e-mail.
+const AVISO_EMAIL_URL = "";

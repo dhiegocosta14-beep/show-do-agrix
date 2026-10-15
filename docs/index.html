@@ -887,11 +887,24 @@ async function ensureProfile(u){
   if(!snap.exists){
     const prof={nome:u.displayName||email.split("@")[0], email, foto:u.photoURL||"", status:(AUTH.admin||domOK)?"aprovado":"pendente", criadoEm:new Date().toISOString()};
     await ref.set(prof); AUTH.profile=prof;
+    if(prof.status==="pendente") avisarGestores(u, ref);
   } else {
     AUTH.profile=snap.data()||{};
     if((u.displayName&&AUTH.profile.nome!==u.displayName)||(u.photoURL&&AUTH.profile.foto!==u.photoURL)){ try{ await ref.set({nome:u.displayName||AUTH.profile.nome, foto:u.photoURL||"", ultimoAcesso:new Date().toISOString()},{merge:true}); AUTH.profile.nome=u.displayName||AUTH.profile.nome; }catch(e){} }
   }
   AUTH.status=AUTH.admin?"aprovado":AUTH.profile.status;
+  if(AUTH.status==="pendente"&&!AUTH.profile.avisoEm&&snap.exists) avisarGestores(u, ref);
+}
+/* Avisa os gestores por e-mail que alguém novo pediu acesso (via Google Apps Script do gestor).
+   O script confere no Firestore, com o token da própria pessoa, que o pedido é real e manda um só e-mail por pessoa. */
+async function avisarGestores(u, ref){
+  const url=(typeof AVISO_EMAIL_URL!=="undefined"?String(AVISO_EMAIL_URL||""):"").trim();
+  if(!url) return;
+  try{
+    const token=await u.getIdToken();
+    await fetch(url,{method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"}, body:JSON.stringify({uid:u.uid, token})});
+    const t=new Date().toISOString(); await ref.set({avisoEm:t},{merge:true}); AUTH.profile.avisoEm=t;
+  }catch(e){}
 }
 function loginGoogle(){
   if(!FB_CONFIG||!window.firebase) return;
@@ -1108,6 +1121,7 @@ let db=null, myId=null, room=null, userCap=null, downloads=null, canEdit=false, 
   renderUser();
   const pb=$("#btn-painel"); if(pb) pb.hidden=!(canEdit&&db);
   if(S.screen==="inicio") render();
+  if(/^#?painel$/i.test(location.hash||"")&&canEdit&&db) loadPanel(); // link do e-mail de aprovação
   if(!db){ rankState="indisponivel"; renderRank(); return; }
   if(myId){ try{ const h=await db.collection("data/users/"+myId).doc("historico").get(); const d=h.exists?(h.data()||{}):null; if(d){ cloudHist={vistas:Array.isArray(d.vistas)?d.vistas:[], erradas:Array.isArray(d.erradas)?d.erradas:[]}; const el=$("#seen-info"); if(el) el.textContent=seenInfo(); } }catch(e){} }
   db.collection("ranking").limit(500).onSnapshot(snap=>{ rankDocs=snap.docs.map(d=>Object.assign({id:d.id}, d.data()||{})); rankState="ok"; renderRank(); }, ()=>{ rankState="erro"; renderRank(); });
@@ -1371,7 +1385,6 @@ function gateHTML(){
     (inApp?'<p class="gate-warn">⚠️ Você abriu o link dentro de outro aplicativo. Se o login não abrir, toque nos três pontinhos e escolha <b>Abrir no navegador</b> (Chrome ou Safari).</p>':'')+
     (err?'<p class="gate-warn">⚠️ '+esc(err)+'</p>':'')+
     '<p class="gate-note">No primeiro acesso, o gestor aprova a sua conta para os resultados valerem no ranking.</p>'+
-    '<ul class="gate-prizes"><li>🥇 1º do mês: café da manhã na Padaria Moinho</li><li>🥈 2º do mês: um Day Off</li></ul>'+
   '</div></section>';
 }
 function render(){
