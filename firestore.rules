@@ -1,0 +1,68 @@
+rules_version = '2';
+// Regras de segurança do Show do AgriX.
+// Cole em: Firebase → Firestore Database → Regras → Publicar.
+// Troque o e-mail do gestor abaixo se for outro.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function principal() { return signed() && request.auth.token.email in ["dhiegocosta14@gmail.com"]; }
+    function gestor() {
+      return principal() || (signed() && exists(/databases/$(database)/documents/config/gestores)
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/config/gestores).data.emails);
+    }
+    function aprovado() {
+      return gestor() || (signed() && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        && get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.status == "aprovado");
+    }
+
+    // Perfis: cada pessoa cria o próprio como "pendente"; só o gestor muda o status.
+    match /usuarios/{uid} {
+      allow read: if signed() && (request.auth.uid == uid || gestor());
+      allow create: if signed() && request.auth.uid == uid
+        && (request.resource.data.status == "pendente" || gestor());
+      allow update: if gestor()
+        || (request.auth.uid == uid && request.resource.data.status == resource.data.status);
+      allow delete: if gestor();
+    }
+
+    // Ranking: todos que entraram veem; só aprovados gravam o próprio resultado.
+    match /ranking/{uid} {
+      allow read: if signed();
+      allow write: if aprovado() && request.auth.uid == uid;
+      allow delete: if gestor();
+    }
+
+    // Estatísticas detalhadas: a pessoa grava as dela; o gestor lê todas.
+    match /stats/{uid} {
+      allow read: if gestor() || (signed() && request.auth.uid == uid);
+      allow write: if aprovado() && request.auth.uid == uid;
+    }
+
+    // Histórico pessoal (perguntas vistas e erradas).
+    match /data/users/{uid}/{doc=**} {
+      allow read, write: if signed() && request.auth.uid == uid;
+    }
+
+    // Ao vivo: o gestor comanda a sala; quem entrou com Google participa.
+    match /live/{code} {
+      allow read: if signed();
+      allow write: if gestor();
+    }
+    match /rooms/{room}/peers/{peer} {
+      allow read: if signed();
+      allow create, update: if signed() && request.resource.data.by == request.auth.uid;
+      allow delete: if signed() && (resource.data.by == request.auth.uid || gestor());
+    }
+
+    // Lista de gestores adicionados: todos que entraram leem; só o gestor principal altera.
+    match /config/gestores {
+      allow read: if signed();
+      allow write: if principal();
+    }
+
+    // Sessões ao vivo concluídas (painel do gestor).
+    match /sessoes/{id} {
+      allow read, write: if gestor();
+    }
+  }
+}
