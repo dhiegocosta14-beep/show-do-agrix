@@ -54,6 +54,16 @@ service cloud.firestore {
       allow delete: if signed() && (resource.data.by == request.auth.uid || gestor());
     }
 
+    // Chances do Show: 3 partidas por mês. A pessoa só soma 1 por vez; o gestor pode devolver.
+    match /chances/{uid} {
+      allow read: if (signed() && request.auth.uid == uid) || gestor();
+      allow create: if aprovado() && request.auth.uid == uid && request.resource.data.usadas == 1;
+      allow update: if gestor() || (aprovado() && request.auth.uid == uid && (
+          (request.resource.data.mes == resource.data.mes && request.resource.data.usadas == resource.data.usadas + 1 && request.resource.data.usadas <= 3)
+          || (request.resource.data.mes > resource.data.mes && request.resource.data.usadas == 1)));
+      allow delete: if gestor();
+    }
+
     // Lista de gestores adicionados: todos que entraram leem; só o gestor principal altera.
     match /config/gestores {
       allow read: if signed();
