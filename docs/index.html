@@ -617,6 +617,8 @@ body.gate #userbox{display:none}
 .cchip{padding:3px 8px; border-radius:999px; border:1px solid var(--line); white-space:nowrap}
 .go:disabled{opacity:.5; filter:grayscale(.6)}
 .ph-top .ph-leave{margin-left:auto; padding:4px 12px; min-height:0}
+/* ---- Certificado ---- */
+.cert-prev{display:block; margin:0 auto; max-width:100%; max-height:62vh; width:auto; height:auto; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.4); background:#fff}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1744,33 +1746,94 @@ function finish(premio, motivo){
   if(G.mode!=="grupo") saveResult(premio, acertos, G.newMedals).then(()=>{ const el=$(".save-msg"); if(el&&S.screen==="fim") el.textContent=G.saveMsg; });
 }
 
-/* ================= Certificado (PNG) ================= */
+/* ================= Certificado (PNG em alta resolução, formato A4 deitado) ================= */
+const LOGO_POLYS={"w": 120, "h": 98, "polys": [[[129, 206, 238], [[79.5, 67.19], [95.56, 83.81], [119.94, 83.81], [92.38, 56.12], [90.12, 56.38]]], [[129, 206, 238], [[83.31, 49.38], [60.12, 49.38], [12.12, 97.94], [36.94, 97.94], [38.0, 95.38]]], [[46, 140, 204], [[118.31, 14.38], [95.56, 14.12], [80.69, 28.81], [80.25, 31.44], [91.31, 41.81]]], [[46, 140, 204], [[12.12, 0.0], [59.12, 47.56], [62.12, 48.94], [83.31, 48.0], [37.06, 0.0]]], [[50, 163, 221], [[2.62, 14.38], [36.31, 48.69], [60.06, 48.56], [25.62, 14.25]]], [[92, 186, 234], [[59.31, 49.38], [36.31, 49.25], [2.62, 83.56], [25.62, 83.69]]]]};
+function certCode(){ const base=(myId||H.nome||"")+"|"+(G.result.acertos)+"|"+G.n+"|"+Date.now(); let h=2166136261; for(const ch of base){ h^=ch.charCodeAt(0); h=Math.imul(h,16777619); } const d=new Date(); return "AGX-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+"-"+(h>>>0).toString(36).toUpperCase().padStart(7,"0").slice(0,7); }
+function drawLogo(x, cx, cy, w){ const sc=w/LOGO_POLYS.w, h=LOGO_POLYS.h*sc; x.save(); x.translate(cx-w/2, cy-h/2); x.scale(sc,sc);
+  LOGO_POLYS.polys.forEach(([c,pts])=>{ x.beginPath(); pts.forEach(([px,py],i)=>i?x.lineTo(px,py):x.moveTo(px,py)); x.closePath(); x.fillStyle="rgb("+c.join(",")+")"; x.fill(); x.lineWidth=0.6; x.strokeStyle=x.fillStyle; x.stroke(); }); x.restore(); }
+function fitFont(x, text, weight, family, maxSize, maxW){ let s=maxSize; do { x.font=weight+" "+s+"px "+family; if(x.measureText(text).width<=maxW) break; s-=2; } while(s>20); return s; }
+function wrapLines(x, text, maxW){ const words=text.split(" "), lines=[]; let cur=""; words.forEach(w=>{ const t=cur?cur+" "+w:w; if(x.measureText(t).width>maxW&&cur){ lines.push(cur); cur=w; } else cur=t; }); if(cur) lines.push(cur); return lines; }
+function drawSeal(x, cx, cy, r){
+  const gold=x.createLinearGradient(cx-r,cy-r,cx+r,cy+r); gold.addColorStop(0,"#e9cf7a"); gold.addColorStop(.5,"#b8913a"); gold.addColorStop(1,"#8a6a22");
+  // fitas
+  x.fillStyle="#0e3866"; [[-1],[1]].forEach(([s])=>{ x.beginPath(); x.moveTo(cx+s*r*.25,cy+r*.55); x.lineTo(cx+s*r*.75,cy+r*1.55); x.lineTo(cx+s*r*.5,cy+r*1.42); x.lineTo(cx+s*r*.42,cy+r*1.7); x.lineTo(cx+s*r*-.02,cy+r*.75); x.closePath(); x.fill(); });
+  // borda recortada
+  x.beginPath(); const n=40; for(let i=0;i<=n*2;i++){ const a=i/(n*2)*Math.PI*2, rr=i%2?r:r*.93; x.lineTo(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr); } x.closePath(); x.fillStyle=gold; x.fill();
+  x.beginPath(); x.arc(cx,cy,r*.84,0,Math.PI*2); x.fillStyle="#0a2a4e"; x.fill();
+  x.beginPath(); x.arc(cx,cy,r*.8,0,Math.PI*2); x.lineWidth=r*.025; x.strokeStyle="#d9b95e"; x.stroke();
+  x.beginPath(); x.arc(cx,cy,r*.56,0,Math.PI*2); x.lineWidth=r*.012; x.stroke();
+  // texto em volta
+  const txt="SHOW DO AGRIX  •  TREINAMENTO DA EQUIPE  •  "; x.save(); x.translate(cx,cy); x.fillStyle="#e9cf7a"; x.font="700 "+Math.round(r*.105)+"px Figtree, Arial, sans-serif"; x.textAlign="center"; x.textBaseline="middle";
+  const step=(Math.PI*2)/txt.length; for(let i=0;i<txt.length;i++){ x.save(); x.rotate(-Math.PI/2+i*step); x.translate(0,-r*.68); x.fillText(txt[i],0,0); x.restore(); } x.restore();
+  drawLogo(x, cx, cy-r*.06, r*.62);
+  x.fillStyle="#e9cf7a"; x.font="700 "+Math.round(r*.11)+"px Figtree, Arial, sans-serif"; x.textAlign="center"; x.textBaseline="alphabetic"; x.fillText("CERTIFICADO", cx, cy+r*.4);
+}
+async function loadCertFonts(){
+  if(!document.getElementById("cert-fonts")){ const l=document.createElement("link"); l.id="cert-fonts"; l.rel="stylesheet"; l.href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,500&display=swap"; document.head.appendChild(l); await new Promise(r=>{ l.onload=r; l.onerror=r; setTimeout(r,2500); }); }
+  try{ await Promise.race([Promise.all(["700 80px 'Playfair Display'","italic 500 40px 'Playfair Display'","600 30px Figtree","400 30px Figtree"].map(f=>document.fonts.load(f))), new Promise(r=>setTimeout(r,2500))]); }catch(e){}
+}
+async function buildCertificate(){
+  await loadCertFonts();
+  const W=2480, Hh=1754, c=document.createElement("canvas"); c.width=W; c.height=Hh; const x=c.getContext("2d");
+  const NAVY="#0a2a4e", NAVY2="#061a33", INK="#1f3550", MUTED="#5d7186", GOLD="#b8913a", SERIF="'Playfair Display', Georgia, 'Times New Roman', serif", SANS="Figtree, Arial, sans-serif";
+  // fundo
+  x.fillStyle="#fbfaf6"; x.fillRect(0,0,W,Hh);
+  // padrão de segurança (linhas onduladas bem claras)
+  x.save(); x.globalAlpha=.07; x.strokeStyle="#2e8ccc"; x.lineWidth=1.4;
+  for(let k=0;k<46;k++){ x.beginPath(); for(let px=560;px<=W;px+=8){ const py=120+k*34+Math.sin(px/90+k*.5)*14+Math.sin(px/37)*4; px===560?x.moveTo(px,py):x.lineTo(px,py); } x.stroke(); } x.restore();
+  // faixa lateral
+  const band=560, bg=x.createLinearGradient(0,0,0,Hh); bg.addColorStop(0,NAVY); bg.addColorStop(1,NAVY2); x.fillStyle=bg; x.fillRect(0,0,band,Hh);
+  x.save(); x.globalAlpha=.08; for(let i=0;i<14;i++){ x.beginPath(); x.arc(band*.5, Hh*.5, 140+i*46, 0, Math.PI*2); x.strokeStyle="#81ceee"; x.lineWidth=2; x.stroke(); } x.restore();
+  x.fillStyle=GOLD; x.fillRect(band,0,10,Hh); x.fillStyle="#e9cf7a"; x.fillRect(band+10,0,3,Hh);
+  drawLogo(x, band/2, 330, 250);
+  x.textAlign="center"; x.fillStyle="#ffffff"; x.font="700 64px "+SERIF; x.fillText("Show do AgriX", band/2, 560);
+  x.fillStyle="#81ceee"; x.font="600 22px "+SANS; x.save(); x.letterSpacing="4px"; x.fillText("PROGRAMA DE TREINAMENTO", band/2, 616); x.restore();
+  x.strokeStyle="rgba(233,207,122,.7)"; x.lineWidth=2; x.beginPath(); x.moveTo(band/2-120,660); x.lineTo(band/2+120,660); x.stroke();
+  // dados na faixa
+  const acertos=G.result.acertos, pct=Math.round(acertos/G.n*100), dt=new Date();
+  const facts=[["APROVEITAMENTO", pct+"%"],["PERGUNTAS", acertos+" de "+G.n],["DATA", dt.toLocaleDateString("pt-BR")]];
+  facts.forEach(([k,v],i)=>{ const y=820+i*190; x.fillStyle="rgba(129,206,238,.85)"; x.font="600 24px "+SANS; x.save(); x.letterSpacing="5px"; x.fillText(k, band/2, y); x.restore(); x.fillStyle="#ffffff"; x.font="700 "+(i===0?84:56)+"px "+SERIF; x.fillText(v, band/2, y+(i===0?84:66)); });
+  // moldura da área principal
+  const L=band+90, R=W-90, T=90, B=Hh-90;
+  x.strokeStyle=GOLD; x.lineWidth=3; x.strokeRect(L,T,R-L,B-T); x.lineWidth=1.2; x.strokeRect(L+16,T+16,R-L-32,B-T-32);
+  [[L,T],[R,T],[L,B],[R,B]].forEach(([px,py])=>{ x.save(); x.translate(px,py); x.rotate(Math.PI/4); x.fillStyle=GOLD; x.fillRect(-11,-11,22,22); x.restore(); });
+  const cx=(L+R)/2, maxW=R-L-260;
+  // título
+  x.textAlign="center"; x.fillStyle=GOLD; x.font="700 30px "+SANS; x.save(); x.letterSpacing="14px"; x.fillText("CERTIFICADO", cx, 290); x.restore();
+  x.fillStyle=NAVY; x.font="700 104px "+SERIF; x.fillText("de Conclusão de Treinamento", cx, 410);
+  x.fillStyle=MUTED; x.font="italic 500 44px "+SERIF; x.fillText("Certificamos que", cx, 560);
+  // nome
+  const nome=String(H.nome||"Participante").trim(); const ns=fitFont(x, nome, "700", SERIF, 132, maxW); x.fillStyle=NAVY; x.fillText(nome, cx, 720);
+  const nw=Math.min(maxW, x.measureText(nome).width+120); const lg=x.createLinearGradient(cx-nw/2,0,cx+nw/2,0); lg.addColorStop(0,"rgba(184,145,58,0)"); lg.addColorStop(.15,GOLD); lg.addColorStop(.85,GOLD); lg.addColorStop(1,"rgba(184,145,58,0)");
+  x.fillStyle=lg; x.fillRect(cx-nw/2, 760, nw, 4);
+  // texto
+  const mods=G.mods.length>=MODS.length?"todos os módulos do sistema":(G.mods.length===1?"o módulo "+G.mods[0]:"os módulos "+G.mods.slice(0,-1).join(", ")+" e "+G.mods[G.mods.length-1]);
+  const body="concluiu com êxito o Treino do Show do AgriX, programa de treinamento da equipe na plataforma AgriX, abrangendo "+mods+", com aproveitamento de "+pct+"% ("+acertos+" acertos em "+G.n+" perguntas).";
+  x.fillStyle=INK; x.font="400 40px "+SANS; const lines=wrapLines(x, body, maxW-80); lines.forEach((ln,i)=>x.fillText(ln, cx, 880+i*62));
+  const dataExt=dt.toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"});
+  x.fillStyle=MUTED; x.font="500 34px "+SANS; x.fillText("Emitido em "+dataExt+".", cx, 880+lines.length*62+50);
+  // assinatura
+  const sy=B-230, sx=L+330;
+  x.strokeStyle=INK; x.lineWidth=2; x.beginPath(); x.moveTo(sx-230,sy); x.lineTo(sx+230,sy); x.stroke();
+  x.fillStyle=NAVY; x.font="700 32px "+SANS; x.fillText("Coordenação de Treinamento", sx, sy+50);
+  x.fillStyle=MUTED; x.font="400 28px "+SANS; x.fillText("Equipe AgriX", sx, sy+90);
+  // selo
+  drawSeal(x, R-290, B-345, 160);
+  // código
+  x.textAlign="center"; x.fillStyle=MUTED; x.font="500 24px "+SANS; x.fillText("Código do certificado: "+certCode(), cx, B-46);
+  return c;
+}
 async function certificate(){
   if(!downloads){ toast('<b>Download indisponível</b><span>Tente em outro navegador.</span>'); return; }
-  try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
-  const W=1600, Hh=1130, c=document.createElement("canvas"); c.width=W; c.height=Hh; const x=c.getContext("2d");
-  x.fillStyle="#ffffff"; x.fillRect(0,0,W,Hh);
-  const g=x.createLinearGradient(0,0,W,Hh); g.addColorStop(0,"#2e8ccc"); g.addColorStop(1,"#81ceee");
-  x.strokeStyle=g; x.lineWidth=28; x.strokeRect(30,30,W-60,Hh-60); x.lineWidth=3; x.strokeStyle="#2e8ccc"; x.strokeRect(70,70,W-140,Hh-140);
-  const logo=new Image(); logo.src=$(".logo img").src; await new Promise(r=>{ logo.onload=r; logo.onerror=r; });
-  try{ x.drawImage(logo, W/2-75, 110, 150, 122); }catch(e){}
-  x.textAlign="center"; x.fillStyle="#0a2a4e";
-  x.font="800 64px 'Bricolage Grotesque', Arial, sans-serif"; x.fillText("Certificado de Treinamento", W/2, 320);
-  x.font="500 30px Figtree, Arial, sans-serif"; x.fillStyle="#3b5a7a"; x.fillText("Show do AgriX", W/2, 370);
-  x.font="400 32px Figtree, Arial, sans-serif"; x.fillText("Certificamos que", W/2, 470);
-  x.font="800 72px 'Bricolage Grotesque', Arial, sans-serif"; x.fillStyle="#2e8ccc"; x.fillText(H.nome||"Participante", W/2, 560);
-  const acertos=G.result.acertos, pct=Math.round(acertos/G.n*100);
-  x.font="400 32px Figtree, Arial, sans-serif"; x.fillStyle="#3b5a7a";
-  x.fillText("concluiu o treinamento do sistema AgriX nos módulos "+G.mods.join(", "), W/2, 640);
-  x.fillText("com aproveitamento de "+pct+"% ("+acertos+" de "+G.n+" perguntas).", W/2, 690);
-  const dt=new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
-  x.font="600 28px Figtree, Arial, sans-serif"; x.fillStyle="#0a2a4e"; x.fillText(dt, W/2, 800);
-  x.strokeStyle="#9fb6cc"; x.lineWidth=2; x.beginPath(); x.moveTo(W/2-220,930); x.lineTo(W/2+220,930); x.stroke();
-  x.font="400 24px Figtree, Arial, sans-serif"; x.fillStyle="#3b5a7a"; x.fillText("Treinamento da equipe AgriX", W/2, 965);
-  const blob=await new Promise(r=>c.toBlob(r,"image/png"));
+  toast('<b>Gerando o certificado…</b><span>Só um instante.</span>');
+  let c; try{ c=await buildCertificate(); }catch(e){ toast('<b>Não foi possível gerar o certificado</b><span>Tente de novo.</span>'); return; }
+  const url=c.toDataURL("image/jpeg",.92);
   const slug=(H.nome||"participante").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
-  try{ await downloads.save({filename:"certificado-agrix-"+slug+".png", data:blob}); }
-  catch(e){ if(e&&e.code==="declined") return; toast('<b>Não foi possível baixar</b><span>Tente de novo em alguns segundos.</span>'); }
+  overlay('<h3 id="dlg-t">Seu certificado</h3><img class="cert-prev" src="'+url+'" alt="Certificado de Conclusão de Treinamento de '+esc(H.nome||"")+'"><div class="row"><button class="btn" id="cert-png">Baixar imagem (PNG)</button><button class="btn ghost" id="cert-print">Imprimir ou salvar em PDF</button><button class="btn ghost" id="dlg-ok">Fechar</button></div>');
+  $("#layer .dialog").classList.add("wide"); $("#dlg-ok").onclick=close;
+  $("#cert-png").onclick=async()=>{ const blob=await new Promise(r=>c.toBlob(r,"image/png")); try{ await downloads.save({filename:"certificado-agrix-"+slug+".png", data:blob}); }catch(e){ if(!(e&&e.code==="declined")) toast('<b>Não foi possível baixar</b><span>Tente de novo em alguns segundos.</span>'); } };
+  $("#cert-print").onclick=()=>{ const w=window.open("","_blank"); if(!w){ toast('<b>Libere as janelas do navegador</b><span>Ou use o botão Baixar imagem.</span>'); return; }
+    w.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Certificado AgriX - '+esc(H.nome||"")+'</title><style>@page{size:A4 landscape;margin:0}html,body{margin:0;background:#fff}img{width:100vw;height:auto;display:block}</style></head><body><img src="'+url+'" onload="setTimeout(function(){window.print()},300)"></body></html>'); w.document.close(); };
 }
 
 /* ================= Telas ================= */
