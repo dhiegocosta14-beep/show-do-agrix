@@ -627,6 +627,9 @@ body.gate #userbox{display:none}
 .certi b{display:block}
 .certi small{display:block; color:var(--muted); font-size:12.5px; line-height:1.35}
 .certlink{margin:-6px 0 14px}
+.certi.old{border-color:rgba(255,197,138,.6); background:linear-gradient(90deg, rgba(255,160,90,.14), rgba(255,160,90,.03))}
+.certi.old .cico{filter:none; opacity:1}
+.btn.warn{background:#f2c14e; color:#1c1300}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1782,14 +1785,13 @@ async function loadCertFonts(){
   try{ await Promise.race([Promise.all(["700 80px 'Playfair Display'","italic 500 40px 'Playfair Display'","600 30px Figtree","400 30px Figtree"].map(f=>document.fonts.load(f))), new Promise(r=>setTimeout(r,2500))]); }catch(e){}
 }
 /* Certificados por módulo: o Treino feito só com os módulos de um certificado, com 10+ perguntas e 80%+, conquista o certificado. */
-const CERTS=[
-  {k:"acm", n:"ACM", mods:["ACM"], sub:"Armazenagem, contratos e comercialização de grãos"},
-  {k:"pecuaria", n:"Pecuária", mods:["Pecuária"], sub:"Compra, recepção, manejo e venda de animais"},
-  {k:"agricola", n:"Agrícola", mods:["Agrícola","Cadastros"], sub:"Planejamento, apontamentos e cadastros básicos"},
-  {k:"administrativo", n:"Administrativo", mods:["Estoque"], sub:"Estoque: itens, depósitos, lotes e inventário"},
-  {k:"compras", n:"Compras", mods:["Compras"], sub:"Solicitação, cotação, pedido e nota fiscal de compra"},
-  {k:"vendas", n:"Vendas", mods:["Vendas"], sub:"Tabela de preço, pedido, aprovação e nota fiscal de venda"}
-];
+const CERT_INFO={ACM:"Armazenagem, contratos e comercialização de grãos", Compras:"Solicitação, cotação, pedido e nota fiscal de compra", Estoque:"Itens, depósitos, lotes, bloqueios e inventário", Vendas:"Tabela de preço, pedido, aprovação e nota fiscal de venda", "Pecuária":"Compra, recepção, manejo e venda de animais", Cadastros:"Configurações, locais de produção e cadastros agrícolas", "Agrícola":"Planejamento de safra e apontamentos de campo"};
+const CERT_NAMES={Cadastros:"Cadastros Básicos"};
+/* Um certificado para cada módulo do jogo: módulo novo ganha certificado automaticamente. */
+const CERTS=MODS.map(m=>({k:m.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase(), m, n:CERT_NAMES[m]||m, mods:[m], sub:CERT_INFO[m]||("Conteúdo completo do módulo "+(CERT_NAMES[m]||m))}));
+/* Tamanho do conteúdo do módulo: quando aumenta, o certificado pede reciclagem. */
+function modCount(m){ return BANK.filter(q=>q.m===m).length; }
+function certState(c){ const r=MYCERTS[c.k]; if(!r) return "none"; return (r.qtd&&r.qtd<modCount(c.m))?"recycle":"ok"; }
 const CERT_MIN_N=10, CERT_MIN_PCT=80;
 function certForMods(mods){ const set=[...new Set(mods)].sort().join("|"); return CERTS.find(c=>c.mods.slice().sort().join("|")===set)||null; }
 let MYCERTS={};
@@ -1797,21 +1799,31 @@ function certsKey(){ return "agrix-certs:"+(myId||"local"); }
 async function loadCerts(){
   MYCERTS=loadJSON(certsKey(),{})||{};
   if(db&&myId){ try{ const d=await db.collection("certificados").doc(myId).get(); const x=d.exists?(d.data()||{}):{}; MYCERTS=Object.assign({}, MYCERTS, x.lista||{}); store(certsKey(), JSON.stringify(MYCERTS)); }catch(e){} }
+  if(MYCERTS.administrativo&&!MYCERTS.estoque){ MYCERTS.estoque=MYCERTS.administrativo; } delete MYCERTS.administrativo;
+  CERTS.forEach(c=>{ const r=MYCERTS[c.k]; if(r&&!r.qtd) r.qtd=modCount(c.m); });
   if(S.screen==="inicio") render();
 }
 async function saveCert(ct){
-  if(MYCERTS[ct.k]) return MYCERTS[ct.k]; // vale a primeira conquista (o código não muda)
-  const rec={data:new Date().toISOString(), codigo:certCode((myId||H.nome)+"|"+ct.k+"|"+Date.now()), nome:(H.nome||"").slice(0,60)};
+  const st=certState(ct), old=MYCERTS[ct.k];
+  if(st==="ok") return old; // já conquistado e em dia: vale a primeira conquista (o código não muda)
+  const rec={data:new Date().toISOString(), codigo:certCode((myId||H.nome)+"|"+ct.k+"|"+Date.now()), nome:(H.nome||"").slice(0,60), qtd:modCount(ct.m)};
+  if(st==="recycle"){ rec.reciclagem=true; rec.anteriores=((old.anteriores||[]).concat([{data:old.data, codigo:old.codigo, qtd:old.qtd}])).slice(-10); }
+  G.certRenewed=st==="recycle"?ct.k:null;
   MYCERTS[ct.k]=rec; store(certsKey(), JSON.stringify(MYCERTS));
   if(db&&myId&&AUTH.status==="aprovado"){ try{ await db.collection("certificados").doc(myId).set({nome:rec.nome, atualizadoEm:rec.data, lista:MYCERTS}); }catch(e){} }
   return rec;
 }
 function certsHTML(){
-  const got=CERTS.filter(c=>MYCERTS[c.k]).length;
-  return '<h2>Meus certificados <span class="pill">'+got+' de '+CERTS.length+'</span></h2><p class="mode-desc" style="margin:0 0 12px">Faça o Treino só com o módulo do certificado, com 10 ou mais perguntas, e acerte 80% ou mais.</p><ul class="certs">'+
-    CERTS.map(c=>{ const r=MYCERTS[c.k];
-      return '<li class="certi'+(r?' got':'')+'"><span class="cico" aria-hidden="true">'+(r?'🎓':'🔒')+'</span><div><b>'+esc(c.n)+'</b><small>'+(r?'Conquistado em '+new Date(r.data).toLocaleDateString("pt-BR"):esc(c.mods.length>1?c.mods.join(" + "):c.sub))+'</small></div>'+
-        (r?'<button class="btn small" data-act="cert-view" data-k="'+c.k+'">Ver</button>':'<button class="btn ghost small" data-act="cert-train" data-k="'+c.k+'">Treinar</button>')+'</li>'; }).join("")+'</ul>';
+  const got=CERTS.filter(c=>certState(c)==="ok").length;
+  return '<h2>Meus certificados <span class="pill">'+got+' de '+CERTS.length+'</span></h2><p class="mode-desc" style="margin:0 0 12px">Um certificado por módulo. Faça o Treino só com o módulo, com '+CERT_MIN_N+' ou mais perguntas, e acerte '+CERT_MIN_PCT+'% ou mais. Quando o módulo ganha conteúdo novo, é preciso fazer a reciclagem.</p><ul class="certs">'+
+    CERTS.map(c=>{ const r=MYCERTS[c.k], st=certState(c);
+      const info=st==="ok"?'Conquistado em '+new Date(r.data).toLocaleDateString("pt-BR")+(r.reciclagem?' (reciclagem)':''):st==="recycle"?'Reciclagem pendente: o módulo ganhou conteúdo novo':esc(c.sub);
+      const btn=st==="ok"?'<button class="btn small" data-act="cert-view" data-k="'+c.k+'">Ver</button>':st==="recycle"?'<button class="btn small warn" data-act="cert-train" data-k="'+c.k+'">Reciclar</button>':'<button class="btn ghost small" data-act="cert-train" data-k="'+c.k+'">Treinar</button>';
+      return '<li class="certi'+(st==="ok"?' got':st==="recycle"?' old':'')+'"><span class="cico" aria-hidden="true">'+(st==="ok"?'🎓':st==="recycle"?'🔄':'🔒')+'</span><div><b>'+esc(c.n)+'</b><small>'+info+'</small></div>'+btn+'</li>'; }).join("")+'</ul>';
+}
+function recycleBannerHTML(){
+  const rc=CERTS.filter(c=>certState(c)==="recycle"); if(!rc.length) return "";
+  return '<div class="resume warn"><span>🔄 '+(rc.length===1?'O módulo <b>'+esc(rc[0].n)+'</b> ganhou conteúdo novo. Faça a reciclagem para renovar o seu certificado.':'Os módulos <b>'+esc(rc.map(c=>c.n).join(", "))+'</b> ganharam conteúdo novo. Faça a reciclagem para renovar os seus certificados.')+'</span><button class="btn small" data-act="cert-train" data-k="'+rc[0].k+'">Reciclar'+(rc.length>1?' '+esc(rc[0].n):'')+'</button></div>';
 }
 async function buildCertificate(info){
   await loadCertFonts();
@@ -1834,7 +1846,7 @@ async function buildCertificate(info){
   x.strokeStyle=GOLD; x.lineWidth=3; x.strokeRect(L,T,R-L,B-T); x.lineWidth=1.2; x.strokeRect(L+16,T+16,R-L-32,B-T-32);
   [[L,T],[R,T],[L,B],[R,B]].forEach(([px,py])=>{ x.save(); x.translate(px,py); x.rotate(Math.PI/4); x.fillStyle=GOLD; x.fillRect(-11,-11,22,22); x.restore(); });
   const cx=(L+R)/2, maxW=R-L-260;
-  x.textAlign="center"; x.fillStyle=GOLD; x.font="700 30px "+SANS; x.save(); x.letterSpacing="14px"; x.fillText("CERTIFICADO", cx, 280); x.restore();
+  x.textAlign="center"; x.fillStyle=GOLD; x.font="700 30px "+SANS; x.save(); x.letterSpacing="14px"; x.fillText(info.reciclagem?"CERTIFICADO · RECICLAGEM":"CERTIFICADO", cx, 280); x.restore();
   x.fillStyle=NAVY; x.font="700 100px "+SERIF; x.fillText("de Conclusão de Treinamento", cx, 395);
   x.fillStyle=MUTED; x.font="italic 500 44px "+SERIF; x.fillText("Certificamos que", cx, 520);
   fitFont(x, nomeP, "700", SERIF, 128, maxW); x.fillStyle=NAVY; x.fillText(nomeP, cx, 670);
@@ -1857,10 +1869,10 @@ async function buildCertificate(info){
 async function certificate(k){
   const ct=CERTS.find(c=>c.k===k), rec=MYCERTS[k]; if(!ct||!rec){ toast('<b>Certificado não encontrado</b><span>Conquiste-o no modo Treino.</span>'); return; }
   toast('<b>Gerando o certificado…</b><span>Só um instante.</span>');
-  let c; try{ c=await buildCertificate({cert:ct, nome:rec.nome||H.nome, data:rec.data, codigo:rec.codigo}); }catch(e){ toast('<b>Não foi possível gerar o certificado</b><span>Tente de novo.</span>'); return; }
+  let c; try{ c=await buildCertificate({cert:ct, nome:rec.nome||H.nome, data:rec.data, codigo:rec.codigo, reciclagem:!!rec.reciclagem}); }catch(e){ toast('<b>Não foi possível gerar o certificado</b><span>Tente de novo.</span>'); return; }
   const url=c.toDataURL("image/jpeg",.92);
   const slug=(ct.k+"-"+(rec.nome||H.nome||"participante")).normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
-  overlay('<h3 id="dlg-t">Certificado '+esc(ct.n)+'</h3><img class="cert-prev" src="'+url+'" alt="Certificado do módulo '+esc(ct.n)+'"><div class="row"><button class="btn" id="cert-png">Baixar imagem (PNG)</button><button class="btn ghost" id="cert-print">Imprimir ou salvar em PDF</button><button class="btn ghost" id="dlg-ok">Fechar</button></div>');
+  overlay('<h3 id="dlg-t">Certificado '+esc(ct.n)+'</h3>'+(certState(ct)==="recycle"?'<p class="hint err" style="margin:0">Este certificado está desatualizado: o módulo ganhou conteúdo novo. Faça a reciclagem para renová-lo.</p>':'')+'<img class="cert-prev" src="'+url+'" alt="Certificado do módulo '+esc(ct.n)+'"><div class="row"><button class="btn" id="cert-png">Baixar imagem (PNG)</button><button class="btn ghost" id="cert-print">Imprimir ou salvar em PDF</button><button class="btn ghost" id="dlg-ok">Fechar</button></div>');
   $("#layer .dialog").classList.add("wide"); $("#dlg-ok").onclick=close;
   $("#cert-png").onclick=async()=>{ const blob=await new Promise(r=>c.toBlob(r,"image/png")); if(!downloads){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="certificado-agrix-"+slug+".png"; document.body.appendChild(a); a.click(); a.remove(); return; } try{ await downloads.save({filename:"certificado-agrix-"+slug+".png", data:blob}); }catch(e){ if(!(e&&e.code==="declined")) toast('<b>Não foi possível baixar</b><span>Tente de novo em alguns segundos.</span>'); } };
   $("#cert-print").onclick=()=>{ const w=window.open("","_blank"); if(!w){ toast('<b>Libere as janelas do navegador</b><span>Ou use o botão Baixar imagem.</span>'); return; }
@@ -1989,9 +2001,9 @@ function resumeHTML(){
 }
 function homeHTML(){
   const m=H.mode;
-  let h=authBannerHTML()+installBannerHTML()+resumeHTML()+'<section class="hero"><div class="card setup">'+
+  let h=authBannerHTML()+recycleBannerHTML()+installBannerHTML()+resumeHTML()+'<section class="hero"><div class="card setup">'+
     '<h1>Quanto você sabe do <em>AgriX</em>?</h1>'+
-    '<p class="lead">'+BANK.length+' perguntas dos módulos ACM, Compras, Estoque, Vendas, Pecuária, Cadastros Básicos e Agrícola, da mais fácil à mais difícil.</p>'+'<p class="certlink"><button class="linkbtn" data-act="go-certs">🎓 Meus certificados: '+CERTS.filter(c=>MYCERTS[c.k]).length+' de '+CERTS.length+'</button></p>'+
+    '<p class="lead">'+BANK.length+' perguntas dos módulos ACM, Compras, Estoque, Vendas, Pecuária, Cadastros Básicos e Agrícola, da mais fácil à mais difícil.</p>'+'<p class="certlink"><button class="linkbtn" data-act="go-certs">🎓 Meus certificados: '+CERTS.filter(c=>certState(c)==="ok").length+' de '+CERTS.length+'</button></p>'+
     '<div class="seg" role="group" aria-label="Modo de jogo">'+Object.keys(MODE_INFO).map(k=>'<button data-act="mode" data-v="'+k+'" aria-pressed="'+(m===k)+'">'+MODE_INFO[k][0]+'<small>'+MODE_INFO[k][1]+'</small></button>').join("")+'</div>'+
     '<p class="mode-desc">'+MODE_INFO[m][2]+'</p>';
   if(m==="aovivo") h+=liveSetupHTML();
@@ -2100,10 +2112,10 @@ function endHTML(){
     const pct=Math.round(r.acertos/G.n*100);
     h+='<div class="tag">Modo Treino</div><div class="big">'+r.acertos+'/'+G.n+'</div><p class="lead" style="margin:0">'+esc(H.nome)+', você acertou '+pct+'% das perguntas. '+(pct>=80?'Ótimo domínio do sistema.':pct>=60?'Bom caminho. Revise os módulos com menos acertos.':'Vale revisar os manuais e jogar de novo.')+'</p>';
     const ct=certForMods(G.mods);
-    if(ct&&pct>=CERT_MIN_PCT&&G.n>=CERT_MIN_N) h+='<div class="cert"><span>🎓 Você conquistou o <b>Certificado '+esc(ct.n)+'</b>. Ele fica guardado em Meus certificados.</span><button class="btn" data-act="cert-view" data-k="'+ct.k+'">Ver certificado</button></div>';
-    else if(!ct) h+='<p class="save-msg">Para conquistar um certificado, faça o Treino só com o módulo dele (ex.: só ACM), com '+CERT_MIN_N+' ou mais perguntas.</p>';
+    if(ct&&pct>=CERT_MIN_PCT&&G.n>=CERT_MIN_N) h+='<div class="cert"><span>🎓 '+(G.certRenewed===ct.k?'Reciclagem concluída: o <b>Certificado '+esc(ct.n)+'</b> foi renovado.':'Você conquistou o <b>Certificado '+esc(ct.n)+'</b>.')+' Ele fica guardado em Meus certificados.</span><button class="btn" data-act="cert-view" data-k="'+ct.k+'">Ver certificado</button></div>';
+    else if(!ct) h+='<p class="save-msg">Para conquistar um certificado, faça o Treino com um módulo só (ex.: só ACM), com '+CERT_MIN_N+' ou mais perguntas.</p>';
     else if(G.n<CERT_MIN_N) h+='<p class="save-msg">O Certificado '+esc(ct.n)+' sai em treinos com '+CERT_MIN_N+' ou mais perguntas e '+CERT_MIN_PCT+'% de acerto.</p>';
-    else if(!MYCERTS[ct.k]) h+='<p class="save-msg">Faltou pouco para o Certificado '+esc(ct.n)+': é preciso acertar '+CERT_MIN_PCT+'% ou mais.</p>';
+    else if(certState(ct)!=="ok") h+='<p class="save-msg">Faltou pouco para '+(certState(ct)==="recycle"?'a reciclagem do':'o')+' Certificado '+esc(ct.n)+': é preciso acertar '+CERT_MIN_PCT+'% ou mais.</p>';
   }
   if(G.newMedals&&G.newMedals.length) h+='<div class="newmedals"><h3>Medalhas novas</h3><ul>'+G.newMedals.map(m=>'<li><span class="mi">'+MEDALS[m].i+'</span><b>'+MEDALS[m].n+'</b><small>'+MEDALS[m].d+'</small></li>').join("")+'</ul></div>';
   const by={}; MODS.forEach(m=>by[m]={ok:0,n:0}); G.log.forEach(l=>{ if(l.skip) return; by[l.m].n++; if(l.ok) by[l.m].ok++; });
@@ -2141,7 +2153,7 @@ function panelHTML(){
   h+='<div class="card"><h2>Pessoas '+(pend.length?'<span class="pill">'+pend.length+' aguardando</span>':'')+'</h2>';
   h+=pend.length?'<ul class="ulist">'+pend.map(u=>urow(u,'<button class="btn small" data-act="approve" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Aprovar</button><button class="btn ghost small" data-act="reject" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Recusar</button>')).join("")+'</ul>':'<p class="empty">Ninguém aguardando aprovação. Quem entrar com Google pela primeira vez aparece aqui.</p>';
   if(ok.length) h+='<details class="champ-gal"><summary>Aprovados ('+ok.length+')</summary><ul class="ulist">'+ok.map(u=>{ const c=(PANEL.chances||[]).find(x=>x.id===u.id), used=c&&c.mes===monthKey()?(c.usadas||0):0;
-    const cz=(PANEL.certs||[]).find(x=>x.id===u.id), cl=cz?CERTS.filter(c2=>(cz.lista||{})[c2.k]).map(c2=>c2.n):[];
+    const cz=(PANEL.certs||[]).find(x=>x.id===u.id), cl=cz?CERTS.filter(c2=>{ const r=(cz.lista||{})[c2.k]; return r&&!(r.qtd&&r.qtd<modCount(c2.m)); }).map(c2=>c2.n):[];
     const chip=(cl.length?'<small class="cchip" title="Certificados: '+esc(cl.join(", "))+'">🎓 '+cl.length+'</small>':'')+'<small class="cchip" title="Partidas do Show usadas neste mês">Show '+used+'/'+SHOW_MAX+'</small>'+(used?'<button class="btn ghost small" data-act="reset-chances" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Devolver chances</button>':'');
     return urow(u,chip+(AUTH.user&&u.id===AUTH.user.uid?'<small>gestor</small>':'<button class="btn ghost small" data-act="revoke" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Suspender</button>')); }).join("")+'</ul></details>';
   if(rec.length) h+='<details class="champ-gal"><summary>Recusados ('+rec.length+')</summary><ul class="ulist">'+rec.map(u=>urow(u,'<button class="btn ghost small" data-act="approve" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Aprovar</button>')).join("")+'</ul></details>';
@@ -2459,7 +2471,7 @@ document.addEventListener("click", e=>{
   if(act==="zoom"){ overlay('<h3 id="dlg-t" class="sr">Tela do sistema</h3><figure class="zoomfig"><img src="'+esc(b.dataset.src)+'" alt="'+esc(b.dataset.cap)+'"><figcaption>📍 '+esc(b.dataset.cap)+'</figcaption></figure><button class="btn" id="dlg-ok">Fechar</button>'); $("#layer .dialog").classList.add("wide"); $("#dlg-ok").focus(); $("#dlg-ok").onclick=close; return; }
   if(act==="go-certs"){ const el=document.getElementById("meus-certs"); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); return; }
   if(act==="cert-view"){ certificate(b.dataset.k); return; }
-  if(act==="cert-train"){ const ct=CERTS.find(c=>c.k===b.dataset.k); if(!ct) return; H.mode="treino"; store("agrix-mode","treino"); H.mods=ct.mods.slice(); store("agrix-mods",JSON.stringify(H.mods)); if(H.n<CERT_MIN_N) H.n=20; store("agrix-n",H.n); H.hint=""; clampQty(); goHome(); toast('<b>Treino do Certificado '+esc(ct.n)+'</b><span>Módulo selecionado. Escolha a quantidade (10 ou mais) e comece.</span>'); return; }
+  if(act==="cert-train"){ const ct=CERTS.find(c=>c.k===b.dataset.k); if(!ct) return; H.mode="treino"; store("agrix-mode","treino"); H.mods=ct.mods.slice(); store("agrix-mods",JSON.stringify(H.mods)); if(H.n<CERT_MIN_N) H.n=20; store("agrix-n",H.n); H.hint=""; clampQty(); goHome(); toast('<b>'+(certState(ct)==="recycle"?'Reciclagem':'Treino')+' do Certificado '+esc(ct.n)+'</b><span>Módulo selecionado. Escolha a quantidade (10 ou mais) e comece.</span>'); return; }
   if(S.screen==="inicio"){
     if(act==="mode"){ H.mode=b.dataset.v; store("agrix-mode",H.mode); H.hint=""; H.lhint=""; render(); return; }
     if(act==="set"){ H[b.dataset.k]=+b.dataset.v; store("agrix-"+b.dataset.k,b.dataset.v); render(); return; }
