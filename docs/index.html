@@ -619,6 +619,14 @@ body.gate #userbox{display:none}
 .ph-top .ph-leave{margin-left:auto; padding:4px 12px; min-height:0}
 /* ---- Certificado ---- */
 .cert-prev{display:block; margin:0 auto; max-width:100%; max-height:62vh; width:auto; height:auto; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.4); background:#fff}
+.certs{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+.certi{display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:12px; padding:10px 12px; border-radius:14px; border:1px solid var(--line); background:rgba(255,255,255,.03)}
+.certi .cico{font-size:24px; width:36px; text-align:center; filter:grayscale(1); opacity:.6}
+.certi.got{border-color:rgba(242,193,78,.6); background:linear-gradient(90deg, rgba(242,193,78,.14), rgba(242,193,78,.03))}
+.certi.got .cico{filter:none; opacity:1}
+.certi b{display:block}
+.certi small{display:block; color:var(--muted); font-size:12.5px; line-height:1.35}
+.certlink{margin:-6px 0 14px}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1490,7 +1498,7 @@ let db=null, myId=null, room=null, userCap=null, downloads=null, canEdit=false, 
   const pb=$("#btn-painel"); if(pb) pb.hidden=!(canEdit&&db);
   if(S.screen==="inicio") render();
   if(/^#?painel$/i.test(location.hash||"")&&canEdit&&db) loadPanel(); // link do e-mail de aprovação
-  loadChances();
+  loadChances(); loadCerts();
   if(!db){ rankState="indisponivel"; renderRank(); return; }
   if(myId){ try{ const h=await db.collection("data/users/"+myId).doc("historico").get(); const d=h.exists?(h.data()||{}):null; if(d){ cloudHist={vistas:Array.isArray(d.vistas)?d.vistas:[], erradas:Array.isArray(d.erradas)?d.erradas:[]}; const el=$("#seen-info"); if(el) el.textContent=seenInfo(); } }catch(e){} }
   db.collection("ranking").limit(500).onSnapshot(snap=>{ rankDocs=snap.docs.map(d=>Object.assign({id:d.id}, d.data()||{})); rankState="ok"; renderRank(); }, ()=>{ rankState="erro"; renderRank(); });
@@ -1732,6 +1740,7 @@ async function nextQuestion(q){
 function finish(premio, motivo){
   stopTimer(); musicStop();
   G.result={premio, acertos:G.log.filter(l=>l.ok).length, motivo};
+  if(G.mode==="treino"){ const ct=certForMods(G.mods), pc=Math.round(G.result.acertos/G.n*100); if(ct&&G.n>=CERT_MIN_N&&pc>=CERT_MIN_PCT) saveCert(ct); }
   if(G.mode!=="grupo"||true) recordHistory(G.log, G.mods);
   S.screen="fim"; G.saveMsg="";
   G.newMedals=G.mode==="grupo"?[]:computeMedals();
@@ -1748,7 +1757,7 @@ function finish(premio, motivo){
 
 /* ================= Certificado (PNG em alta resolução, formato A4 deitado) ================= */
 const LOGO_POLYS={"w": 120, "h": 98, "polys": [[[129, 206, 238], [[79.5, 67.19], [95.56, 83.81], [119.94, 83.81], [92.38, 56.12], [90.12, 56.38]]], [[129, 206, 238], [[83.31, 49.38], [60.12, 49.38], [12.12, 97.94], [36.94, 97.94], [38.0, 95.38]]], [[46, 140, 204], [[118.31, 14.38], [95.56, 14.12], [80.69, 28.81], [80.25, 31.44], [91.31, 41.81]]], [[46, 140, 204], [[12.12, 0.0], [59.12, 47.56], [62.12, 48.94], [83.31, 48.0], [37.06, 0.0]]], [[50, 163, 221], [[2.62, 14.38], [36.31, 48.69], [60.06, 48.56], [25.62, 14.25]]], [[92, 186, 234], [[59.31, 49.38], [36.31, 49.25], [2.62, 83.56], [25.62, 83.69]]]]};
-function certCode(){ const base=(myId||H.nome||"")+"|"+(G.result.acertos)+"|"+G.n+"|"+Date.now(); let h=2166136261; for(const ch of base){ h^=ch.charCodeAt(0); h=Math.imul(h,16777619); } const d=new Date(); return "AGX-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+"-"+(h>>>0).toString(36).toUpperCase().padStart(7,"0").slice(0,7); }
+function certCode(seed){ let h=2166136261; for(const ch of String(seed)){ h^=ch.charCodeAt(0); h=Math.imul(h,16777619); } const d=new Date(); return "AGX-"+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+"-"+(h>>>0).toString(36).toUpperCase().padStart(7,"0").slice(0,7); }
 function drawLogo(x, cx, cy, w){ const sc=w/LOGO_POLYS.w, h=LOGO_POLYS.h*sc; x.save(); x.translate(cx-w/2, cy-h/2); x.scale(sc,sc);
   LOGO_POLYS.polys.forEach(([c,pts])=>{ x.beginPath(); pts.forEach(([px,py],i)=>i?x.lineTo(px,py):x.moveTo(px,py)); x.closePath(); x.fillStyle="rgb("+c.join(",")+")"; x.fill(); x.lineWidth=0.6; x.strokeStyle=x.fillStyle; x.stroke(); }); x.restore(); }
 function fitFont(x, text, weight, family, maxSize, maxW){ let s=maxSize; do { x.font=weight+" "+s+"px "+family; if(x.measureText(text).width<=maxW) break; s-=2; } while(s>20); return s; }
@@ -1772,16 +1781,46 @@ async function loadCertFonts(){
   if(!document.getElementById("cert-fonts")){ const l=document.createElement("link"); l.id="cert-fonts"; l.rel="stylesheet"; l.href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700;1,500&display=swap"; document.head.appendChild(l); await new Promise(r=>{ l.onload=r; l.onerror=r; setTimeout(r,2500); }); }
   try{ await Promise.race([Promise.all(["700 80px 'Playfair Display'","italic 500 40px 'Playfair Display'","600 30px Figtree","400 30px Figtree"].map(f=>document.fonts.load(f))), new Promise(r=>setTimeout(r,2500))]); }catch(e){}
 }
-async function buildCertificate(){
+/* Certificados por módulo: o Treino feito só com os módulos de um certificado, com 10+ perguntas e 80%+, conquista o certificado. */
+const CERTS=[
+  {k:"acm", n:"ACM", mods:["ACM"], sub:"Armazenagem, contratos e comercialização de grãos"},
+  {k:"pecuaria", n:"Pecuária", mods:["Pecuária"], sub:"Compra, recepção, manejo e venda de animais"},
+  {k:"agricola", n:"Agrícola", mods:["Agrícola","Cadastros"], sub:"Planejamento, apontamentos e cadastros básicos"},
+  {k:"administrativo", n:"Administrativo", mods:["Estoque"], sub:"Estoque: itens, depósitos, lotes e inventário"},
+  {k:"compras", n:"Compras", mods:["Compras"], sub:"Solicitação, cotação, pedido e nota fiscal de compra"},
+  {k:"vendas", n:"Vendas", mods:["Vendas"], sub:"Tabela de preço, pedido, aprovação e nota fiscal de venda"}
+];
+const CERT_MIN_N=10, CERT_MIN_PCT=80;
+function certForMods(mods){ const set=[...new Set(mods)].sort().join("|"); return CERTS.find(c=>c.mods.slice().sort().join("|")===set)||null; }
+let MYCERTS={};
+function certsKey(){ return "agrix-certs:"+(myId||"local"); }
+async function loadCerts(){
+  MYCERTS=loadJSON(certsKey(),{})||{};
+  if(db&&myId){ try{ const d=await db.collection("certificados").doc(myId).get(); const x=d.exists?(d.data()||{}):{}; MYCERTS=Object.assign({}, MYCERTS, x.lista||{}); store(certsKey(), JSON.stringify(MYCERTS)); }catch(e){} }
+  if(S.screen==="inicio") render();
+}
+async function saveCert(ct){
+  if(MYCERTS[ct.k]) return MYCERTS[ct.k]; // vale a primeira conquista (o código não muda)
+  const rec={data:new Date().toISOString(), codigo:certCode((myId||H.nome)+"|"+ct.k+"|"+Date.now()), nome:(H.nome||"").slice(0,60)};
+  MYCERTS[ct.k]=rec; store(certsKey(), JSON.stringify(MYCERTS));
+  if(db&&myId&&AUTH.status==="aprovado"){ try{ await db.collection("certificados").doc(myId).set({nome:rec.nome, atualizadoEm:rec.data, lista:MYCERTS}); }catch(e){} }
+  return rec;
+}
+function certsHTML(){
+  const got=CERTS.filter(c=>MYCERTS[c.k]).length;
+  return '<h2>Meus certificados <span class="pill">'+got+' de '+CERTS.length+'</span></h2><p class="mode-desc" style="margin:0 0 12px">Faça o Treino só com o módulo do certificado, com 10 ou mais perguntas, e acerte 80% ou mais.</p><ul class="certs">'+
+    CERTS.map(c=>{ const r=MYCERTS[c.k];
+      return '<li class="certi'+(r?' got':'')+'"><span class="cico" aria-hidden="true">'+(r?'🎓':'🔒')+'</span><div><b>'+esc(c.n)+'</b><small>'+(r?'Conquistado em '+new Date(r.data).toLocaleDateString("pt-BR"):esc(c.mods.length>1?c.mods.join(" + "):c.sub))+'</small></div>'+
+        (r?'<button class="btn small" data-act="cert-view" data-k="'+c.k+'">Ver</button>':'<button class="btn ghost small" data-act="cert-train" data-k="'+c.k+'">Treinar</button>')+'</li>'; }).join("")+'</ul>';
+}
+async function buildCertificate(info){
   await loadCertFonts();
+  const ct=info.cert, nomeP=String(info.nome||"Participante").trim(), dt=new Date(info.data||Date.now());
   const W=2480, Hh=1754, c=document.createElement("canvas"); c.width=W; c.height=Hh; const x=c.getContext("2d");
   const NAVY="#0a2a4e", NAVY2="#061a33", INK="#1f3550", MUTED="#5d7186", GOLD="#b8913a", SERIF="'Playfair Display', Georgia, 'Times New Roman', serif", SANS="Figtree, Arial, sans-serif";
-  // fundo
   x.fillStyle="#fbfaf6"; x.fillRect(0,0,W,Hh);
-  // padrão de segurança (linhas onduladas bem claras)
   x.save(); x.globalAlpha=.07; x.strokeStyle="#2e8ccc"; x.lineWidth=1.4;
   for(let k=0;k<46;k++){ x.beginPath(); for(let px=560;px<=W;px+=8){ const py=120+k*34+Math.sin(px/90+k*.5)*14+Math.sin(px/37)*4; px===560?x.moveTo(px,py):x.lineTo(px,py); } x.stroke(); } x.restore();
-  // faixa lateral
   const band=560, bg=x.createLinearGradient(0,0,0,Hh); bg.addColorStop(0,NAVY); bg.addColorStop(1,NAVY2); x.fillStyle=bg; x.fillRect(0,0,band,Hh);
   x.save(); x.globalAlpha=.08; for(let i=0;i<14;i++){ x.beginPath(); x.arc(band*.5, Hh*.5, 140+i*46, 0, Math.PI*2); x.strokeStyle="#81ceee"; x.lineWidth=2; x.stroke(); } x.restore();
   x.fillStyle=GOLD; x.fillRect(band,0,10,Hh); x.fillStyle="#e9cf7a"; x.fillRect(band+10,0,3,Hh);
@@ -1789,49 +1828,41 @@ async function buildCertificate(){
   x.textAlign="center"; x.fillStyle="#ffffff"; x.font="700 64px "+SERIF; x.fillText("Show do AgriX", band/2, 560);
   x.fillStyle="#81ceee"; x.font="600 22px "+SANS; x.save(); x.letterSpacing="4px"; x.fillText("PROGRAMA DE TREINAMENTO", band/2, 616); x.restore();
   x.strokeStyle="rgba(233,207,122,.7)"; x.lineWidth=2; x.beginPath(); x.moveTo(band/2-120,660); x.lineTo(band/2+120,660); x.stroke();
-  // dados na faixa
-  const acertos=G.result.acertos, pct=Math.round(acertos/G.n*100), dt=new Date();
-  const facts=[["APROVEITAMENTO", pct+"%"],["PERGUNTAS", acertos+" de "+G.n],["DATA", dt.toLocaleDateString("pt-BR")]];
-  facts.forEach(([k,v],i)=>{ const y=820+i*190; x.fillStyle="rgba(129,206,238,.85)"; x.font="600 24px "+SANS; x.save(); x.letterSpacing="5px"; x.fillText(k, band/2, y); x.restore(); x.fillStyle="#ffffff"; x.font="700 "+(i===0?84:56)+"px "+SERIF; x.fillText(v, band/2, y+(i===0?84:66)); });
-  // moldura da área principal
+  const facts=[["MÓDULO", ct.n, 76],["CONCLUSÃO", dt.toLocaleDateString("pt-BR"), 56]];
+  facts.forEach(([k,v,fs],i)=>{ const y=840+i*230; x.fillStyle="rgba(129,206,238,.85)"; x.font="600 24px "+SANS; x.save(); x.letterSpacing="5px"; x.fillText(k, band/2, y); x.restore(); x.fillStyle="#ffffff"; fitFont(x, v, "700", SERIF, fs, band-80); x.fillText(v, band/2, y+fs+10); });
   const L=band+90, R=W-90, T=90, B=Hh-90;
   x.strokeStyle=GOLD; x.lineWidth=3; x.strokeRect(L,T,R-L,B-T); x.lineWidth=1.2; x.strokeRect(L+16,T+16,R-L-32,B-T-32);
   [[L,T],[R,T],[L,B],[R,B]].forEach(([px,py])=>{ x.save(); x.translate(px,py); x.rotate(Math.PI/4); x.fillStyle=GOLD; x.fillRect(-11,-11,22,22); x.restore(); });
   const cx=(L+R)/2, maxW=R-L-260;
-  // título
-  x.textAlign="center"; x.fillStyle=GOLD; x.font="700 30px "+SANS; x.save(); x.letterSpacing="14px"; x.fillText("CERTIFICADO", cx, 290); x.restore();
-  x.fillStyle=NAVY; x.font="700 104px "+SERIF; x.fillText("de Conclusão de Treinamento", cx, 410);
-  x.fillStyle=MUTED; x.font="italic 500 44px "+SERIF; x.fillText("Certificamos que", cx, 560);
-  // nome
-  const nome=String(H.nome||"Participante").trim(); const ns=fitFont(x, nome, "700", SERIF, 132, maxW); x.fillStyle=NAVY; x.fillText(nome, cx, 720);
-  const nw=Math.min(maxW, x.measureText(nome).width+120); const lg=x.createLinearGradient(cx-nw/2,0,cx+nw/2,0); lg.addColorStop(0,"rgba(184,145,58,0)"); lg.addColorStop(.15,GOLD); lg.addColorStop(.85,GOLD); lg.addColorStop(1,"rgba(184,145,58,0)");
-  x.fillStyle=lg; x.fillRect(cx-nw/2, 760, nw, 4);
-  // texto
-  const mods=G.mods.length>=MODS.length?"todos os módulos do sistema":(G.mods.length===1?"o módulo "+G.mods[0]:"os módulos "+G.mods.slice(0,-1).join(", ")+" e "+G.mods[G.mods.length-1]);
-  const body="concluiu com êxito o Treino do Show do AgriX, programa de treinamento da equipe na plataforma AgriX, abrangendo "+mods+", com aproveitamento de "+pct+"% ("+acertos+" acertos em "+G.n+" perguntas).";
-  x.fillStyle=INK; x.font="400 40px "+SANS; const lines=wrapLines(x, body, maxW-80); lines.forEach((ln,i)=>x.fillText(ln, cx, 880+i*62));
+  x.textAlign="center"; x.fillStyle=GOLD; x.font="700 30px "+SANS; x.save(); x.letterSpacing="14px"; x.fillText("CERTIFICADO", cx, 280); x.restore();
+  x.fillStyle=NAVY; x.font="700 100px "+SERIF; x.fillText("de Conclusão de Treinamento", cx, 395);
+  x.fillStyle=MUTED; x.font="italic 500 44px "+SERIF; x.fillText("Certificamos que", cx, 520);
+  fitFont(x, nomeP, "700", SERIF, 128, maxW); x.fillStyle=NAVY; x.fillText(nomeP, cx, 670);
+  const nw=Math.min(maxW, x.measureText(nomeP).width+120); const lg=x.createLinearGradient(cx-nw/2,0,cx+nw/2,0); lg.addColorStop(0,"rgba(184,145,58,0)"); lg.addColorStop(.15,GOLD); lg.addColorStop(.85,GOLD); lg.addColorStop(1,"rgba(184,145,58,0)");
+  x.fillStyle=lg; x.fillRect(cx-nw/2, 712, nw, 4);
+  x.fillStyle=INK; x.font="400 40px "+SANS; x.fillText("concluiu com êxito o treinamento do", cx, 820);
+  x.fillStyle=NAVY; fitFont(x, "Módulo "+ct.n, "700", SERIF, 92, maxW); x.fillText("Módulo "+ct.n, cx, 930);
+  x.fillStyle=GOLD; x.font="600 32px "+SANS; x.fillText(ct.sub, cx, 995);
+  x.fillStyle=INK; x.font="400 36px "+SANS; const lines=wrapLines(x, "da plataforma AgriX, no Show do AgriX — Programa de Treinamento da Equipe, sendo aprovado(a) na avaliação do módulo.", maxW-120); lines.forEach((ln,i)=>x.fillText(ln, cx, 1080+i*54));
   const dataExt=dt.toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"});
-  x.fillStyle=MUTED; x.font="500 34px "+SANS; x.fillText("Emitido em "+dataExt+".", cx, 880+lines.length*62+50);
-  // assinatura
+  x.fillStyle=MUTED; x.font="500 32px "+SANS; x.fillText("Emitido em "+dataExt+".", cx, 1080+lines.length*54+40);
   const sy=B-230, sx=L+330;
   x.strokeStyle=INK; x.lineWidth=2; x.beginPath(); x.moveTo(sx-230,sy); x.lineTo(sx+230,sy); x.stroke();
   x.fillStyle=NAVY; x.font="700 32px "+SANS; x.fillText("Coordenação de Treinamento", sx, sy+50);
   x.fillStyle=MUTED; x.font="400 28px "+SANS; x.fillText("Equipe AgriX", sx, sy+90);
-  // selo
   drawSeal(x, R-290, B-345, 160);
-  // código
-  x.textAlign="center"; x.fillStyle=MUTED; x.font="500 24px "+SANS; x.fillText("Código do certificado: "+certCode(), cx, B-46);
+  x.textAlign="center"; x.fillStyle=MUTED; x.font="500 24px "+SANS; x.fillText("Código do certificado: "+(info.codigo||""), cx, B-46);
   return c;
 }
-async function certificate(){
-  if(!downloads){ toast('<b>Download indisponível</b><span>Tente em outro navegador.</span>'); return; }
+async function certificate(k){
+  const ct=CERTS.find(c=>c.k===k), rec=MYCERTS[k]; if(!ct||!rec){ toast('<b>Certificado não encontrado</b><span>Conquiste-o no modo Treino.</span>'); return; }
   toast('<b>Gerando o certificado…</b><span>Só um instante.</span>');
-  let c; try{ c=await buildCertificate(); }catch(e){ toast('<b>Não foi possível gerar o certificado</b><span>Tente de novo.</span>'); return; }
+  let c; try{ c=await buildCertificate({cert:ct, nome:rec.nome||H.nome, data:rec.data, codigo:rec.codigo}); }catch(e){ toast('<b>Não foi possível gerar o certificado</b><span>Tente de novo.</span>'); return; }
   const url=c.toDataURL("image/jpeg",.92);
-  const slug=(H.nome||"participante").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
-  overlay('<h3 id="dlg-t">Seu certificado</h3><img class="cert-prev" src="'+url+'" alt="Certificado de Conclusão de Treinamento de '+esc(H.nome||"")+'"><div class="row"><button class="btn" id="cert-png">Baixar imagem (PNG)</button><button class="btn ghost" id="cert-print">Imprimir ou salvar em PDF</button><button class="btn ghost" id="dlg-ok">Fechar</button></div>');
+  const slug=(ct.k+"-"+(rec.nome||H.nome||"participante")).normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/gi,"-").toLowerCase();
+  overlay('<h3 id="dlg-t">Certificado '+esc(ct.n)+'</h3><img class="cert-prev" src="'+url+'" alt="Certificado do módulo '+esc(ct.n)+'"><div class="row"><button class="btn" id="cert-png">Baixar imagem (PNG)</button><button class="btn ghost" id="cert-print">Imprimir ou salvar em PDF</button><button class="btn ghost" id="dlg-ok">Fechar</button></div>');
   $("#layer .dialog").classList.add("wide"); $("#dlg-ok").onclick=close;
-  $("#cert-png").onclick=async()=>{ const blob=await new Promise(r=>c.toBlob(r,"image/png")); try{ await downloads.save({filename:"certificado-agrix-"+slug+".png", data:blob}); }catch(e){ if(!(e&&e.code==="declined")) toast('<b>Não foi possível baixar</b><span>Tente de novo em alguns segundos.</span>'); } };
+  $("#cert-png").onclick=async()=>{ const blob=await new Promise(r=>c.toBlob(r,"image/png")); if(!downloads){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="certificado-agrix-"+slug+".png"; document.body.appendChild(a); a.click(); a.remove(); return; } try{ await downloads.save({filename:"certificado-agrix-"+slug+".png", data:blob}); }catch(e){ if(!(e&&e.code==="declined")) toast('<b>Não foi possível baixar</b><span>Tente de novo em alguns segundos.</span>'); } };
   $("#cert-print").onclick=()=>{ const w=window.open("","_blank"); if(!w){ toast('<b>Libere as janelas do navegador</b><span>Ou use o botão Baixar imagem.</span>'); return; }
     w.document.write('<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Certificado AgriX - '+esc(H.nome||"")+'</title><style>@page{size:A4 landscape;margin:0}html,body{margin:0;background:#fff}img{width:100vw;height:auto;display:block}</style></head><body><img src="'+url+'" onload="setTimeout(function(){window.print()},300)"></body></html>'); w.document.close(); };
 }
@@ -1928,7 +1959,7 @@ function modsField(){
 }
 const MODE_INFO={
   show:["Show","valendo prêmios","Individual, valendo prêmios até o milhão. Errou, o jogo acaba. Tem ajudas, medalhas e entra no ranking."],
-  treino:["Treino","nota por módulo","Individual, sem prêmios. Você responde todas, vê a explicação e onde fica cada tela, e ganha certificado com 80% ou mais."],
+  treino:["Treino","nota por módulo","Individual, sem prêmios. Você responde todas, vê a explicação e onde fica cada tela, e conquista o certificado do módulo quando treina só ele, com 10+ perguntas e 80% de acerto."],
   revanche:["Revanche","só as que errou","Volta nas perguntas que você errou. Errou de novo? Ela volta no fim da fila até você acertar."],
   grupo:["Grupo","mesma tela","Várias pessoas ou equipes na mesma tela, uma de cada vez. Acerto vale pontos conforme a dificuldade."],
   aovivo:["Ao vivo","telão + celulares","A pergunta aparece no telão e cada participante responde no próprio celular. Quem acerta mais rápido ganha mais pontos."]
@@ -1960,7 +1991,7 @@ function homeHTML(){
   const m=H.mode;
   let h=authBannerHTML()+installBannerHTML()+resumeHTML()+'<section class="hero"><div class="card setup">'+
     '<h1>Quanto você sabe do <em>AgriX</em>?</h1>'+
-    '<p class="lead">'+BANK.length+' perguntas dos módulos ACM, Compras, Estoque, Vendas, Pecuária, Cadastros Básicos e Agrícola, da mais fácil à mais difícil.</p>'+
+    '<p class="lead">'+BANK.length+' perguntas dos módulos ACM, Compras, Estoque, Vendas, Pecuária, Cadastros Básicos e Agrícola, da mais fácil à mais difícil.</p>'+'<p class="certlink"><button class="linkbtn" data-act="go-certs">🎓 Meus certificados: '+CERTS.filter(c=>MYCERTS[c.k]).length+' de '+CERTS.length+'</button></p>'+
     '<div class="seg" role="group" aria-label="Modo de jogo">'+Object.keys(MODE_INFO).map(k=>'<button data-act="mode" data-v="'+k+'" aria-pressed="'+(m===k)+'">'+MODE_INFO[k][0]+'<small>'+MODE_INFO[k][1]+'</small></button>').join("")+'</div>'+
     '<p class="mode-desc">'+MODE_INFO[m][2]+'</p>';
   if(m==="aovivo") h+=liveSetupHTML();
@@ -1981,7 +2012,7 @@ function homeHTML(){
     h+='<button class="go" data-act="start"'+(m==="show"&&db&&myId&&!chancesLeft()?' disabled':'')+'>'+(m==="revanche"?'Começar a revanche':(m==="show"&&db&&myId&&!chancesLeft()?'Sem chances do Show este mês':'Começar o jogo'))+'</button>';
   }
   h+='<p class="hint'+(H.hint?' err':'')+'" id="hint">'+esc(H.hint)+'</p></div>';
-  h+='<div class="side-col"><div class="card champ" data-champ>'+championHTML()+'</div>';
+  h+='<div class="side-col"><div class="card champ" data-champ>'+championHTML()+'</div><div class="card" id="meus-certs">'+certsHTML()+'</div>';
   if(m==="aovivo") h+='<div class="card"><h2>Como funciona o Ao vivo</h2><ul class="rules"><li><b>No telão:</b> o dono do jogo cria a sala e mostra o código e o QR Code.</li><li><b>No celular:</b> cada um abre o link, toca em Entrar na sala e digita o código e o nome.</li><li><b>Pontos:</b> acerto vale de 500 a 1.000, conforme a rapidez. 3 seguidas dão +100.</li><li><b>Requisito:</b> cada um entra com a própria conta Google.</li></ul></div>';
   else if(m==="grupo") h+='<div class="card"><h2>Como funciona o Grupo</h2><ul class="rules"><li><b>Vez de cada um:</b> as perguntas passam de jogador em jogador.</li><li><b>Pontos:</b> fácil 100, média 200, difícil 300.</li><li><b>Ajudas:</b> cada jogador tem cartas, placas e universitários uma vez.</li><li><b>Fim:</b> pódio, confete e revisão das respostas.</li></ul></div>';
   else h+='<div class="card"><div class="presenter-intro">'+mascotHTML()+'</div><h2 style="margin-top:14px">Regras do Show</h2><ul class="rules"><li><b>Acertou:</b> sobe para o próximo prêmio.</li><li><b>Parou:</b> leva o prêmio que já tem.</li><li><b>Errou:</b> leva metade. Na pergunta do milhão, perde tudo.</li><li><b>Ajudas:</b> pulos, cartas, placas e universitários. Não valem no milhão.</li><li><b>Chances:</b> '+SHOW_MAX+' partidas do Show por mês. Vale o melhor resultado no ranking.</li></ul><p class="medal-strip" title="Medalhas que dá para ganhar">'+Object.values(MEDALS).map(x=>'<span title="'+esc(x.n+": "+x.d)+'">'+x.i+'</span>').join("")+'</p></div>';
@@ -2068,8 +2099,11 @@ function endHTML(){
   } else {
     const pct=Math.round(r.acertos/G.n*100);
     h+='<div class="tag">Modo Treino</div><div class="big">'+r.acertos+'/'+G.n+'</div><p class="lead" style="margin:0">'+esc(H.nome)+', você acertou '+pct+'% das perguntas. '+(pct>=80?'Ótimo domínio do sistema.':pct>=60?'Bom caminho. Revise os módulos com menos acertos.':'Vale revisar os manuais e jogar de novo.')+'</p>';
-    if(pct>=80&&G.n>=10) h+='<div class="cert"><span>🎓 Você conquistou o certificado deste treino.</span>'+(downloads?'<button class="btn" data-act="cert">Baixar certificado</button>':'<small>Abra pelo Claude para baixar.</small>')+'</div>';
-    else if(G.n<10) h+='<p class="save-msg">O certificado sai em treinos com 10 ou mais perguntas e 80% de acerto.</p>';
+    const ct=certForMods(G.mods);
+    if(ct&&pct>=CERT_MIN_PCT&&G.n>=CERT_MIN_N) h+='<div class="cert"><span>🎓 Você conquistou o <b>Certificado '+esc(ct.n)+'</b>. Ele fica guardado em Meus certificados.</span><button class="btn" data-act="cert-view" data-k="'+ct.k+'">Ver certificado</button></div>';
+    else if(!ct) h+='<p class="save-msg">Para conquistar um certificado, faça o Treino só com o módulo dele (ex.: só ACM), com '+CERT_MIN_N+' ou mais perguntas.</p>';
+    else if(G.n<CERT_MIN_N) h+='<p class="save-msg">O Certificado '+esc(ct.n)+' sai em treinos com '+CERT_MIN_N+' ou mais perguntas e '+CERT_MIN_PCT+'% de acerto.</p>';
+    else if(!MYCERTS[ct.k]) h+='<p class="save-msg">Faltou pouco para o Certificado '+esc(ct.n)+': é preciso acertar '+CERT_MIN_PCT+'% ou mais.</p>';
   }
   if(G.newMedals&&G.newMedals.length) h+='<div class="newmedals"><h3>Medalhas novas</h3><ul>'+G.newMedals.map(m=>'<li><span class="mi">'+MEDALS[m].i+'</span><b>'+MEDALS[m].n+'</b><small>'+MEDALS[m].d+'</small></li>').join("")+'</ul></div>';
   const by={}; MODS.forEach(m=>by[m]={ok:0,n:0}); G.log.forEach(l=>{ if(l.skip) return; by[l.m].n++; if(l.ok) by[l.m].ok++; });
@@ -2091,7 +2125,8 @@ async function loadPanel(){
   try{
     const [st,se,us,gs]=await Promise.all([db.collection("stats").limit(1000).get(), db.collection("sessoes").limit(200).get(), db.collection("usuarios").limit(1000).get(), db.collection("config").doc("gestores").get()]);
     let ch=[]; try{ ch=(await db.collection("chances").limit(1000).get()).docs.map(d=>Object.assign({id:d.id}, d.data()||{})); }catch(e){}
-    PANEL={gestores:((gs.exists&&(gs.data()||{}).emails)||[]), users:us.docs.map(d=>Object.assign({id:d.id}, d.data()||{})), stats:st.docs.map(d=>Object.assign({id:d.id}, d.data()||{})), sess:se.docs.map(d=>Object.assign({id:d.id}, d.data()||{})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm))), chances:ch};
+    let cs=[]; try{ cs=(await db.collection("certificados").limit(1000).get()).docs.map(d=>Object.assign({id:d.id}, d.data()||{})); }catch(e){}
+    PANEL={gestores:((gs.exists&&(gs.data()||{}).emails)||[]), users:us.docs.map(d=>Object.assign({id:d.id}, d.data()||{})), stats:st.docs.map(d=>Object.assign({id:d.id}, d.data()||{})), sess:se.docs.map(d=>Object.assign({id:d.id}, d.data()||{})).sort((a,b)=>String(b.criadoEm).localeCompare(String(a.criadoEm))), chances:ch, certs:cs};
   }catch(e){ PANEL={err:"Não foi possível carregar o painel. Ele só abre para a conta do gestor."}; }
   if(S.screen==="painel") render();
 }
@@ -2106,7 +2141,8 @@ function panelHTML(){
   h+='<div class="card"><h2>Pessoas '+(pend.length?'<span class="pill">'+pend.length+' aguardando</span>':'')+'</h2>';
   h+=pend.length?'<ul class="ulist">'+pend.map(u=>urow(u,'<button class="btn small" data-act="approve" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Aprovar</button><button class="btn ghost small" data-act="reject" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Recusar</button>')).join("")+'</ul>':'<p class="empty">Ninguém aguardando aprovação. Quem entrar com Google pela primeira vez aparece aqui.</p>';
   if(ok.length) h+='<details class="champ-gal"><summary>Aprovados ('+ok.length+')</summary><ul class="ulist">'+ok.map(u=>{ const c=(PANEL.chances||[]).find(x=>x.id===u.id), used=c&&c.mes===monthKey()?(c.usadas||0):0;
-    const chip='<small class="cchip" title="Partidas do Show usadas neste mês">Show '+used+'/'+SHOW_MAX+'</small>'+(used?'<button class="btn ghost small" data-act="reset-chances" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Devolver chances</button>':'');
+    const cz=(PANEL.certs||[]).find(x=>x.id===u.id), cl=cz?CERTS.filter(c2=>(cz.lista||{})[c2.k]).map(c2=>c2.n):[];
+    const chip=(cl.length?'<small class="cchip" title="Certificados: '+esc(cl.join(", "))+'">🎓 '+cl.length+'</small>':'')+'<small class="cchip" title="Partidas do Show usadas neste mês">Show '+used+'/'+SHOW_MAX+'</small>'+(used?'<button class="btn ghost small" data-act="reset-chances" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Devolver chances</button>':'');
     return urow(u,chip+(AUTH.user&&u.id===AUTH.user.uid?'<small>gestor</small>':'<button class="btn ghost small" data-act="revoke" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Suspender</button>')); }).join("")+'</ul></details>';
   if(rec.length) h+='<details class="champ-gal"><summary>Recusados ('+rec.length+')</summary><ul class="ulist">'+rec.map(u=>urow(u,'<button class="btn ghost small" data-act="approve" data-uid="'+esc(u.id)+'" data-nome="'+esc(u.nome||"")+'">Aprovar</button>')).join("")+'</ul></details>';
   h+='</div>';
@@ -2421,6 +2457,9 @@ document.addEventListener("click", e=>{
   if(act==="approve"||act==="reject"||act==="revoke"){ const st={approve:"aprovado",reject:"recusado",revoke:"pendente"}[act];
     db.collection("usuarios").doc(b.dataset.uid).update({status:st, decididoEm:new Date().toISOString()}).then(()=>{ toast('<b>'+(st==="aprovado"?"Acesso aprovado":st==="recusado"?"Acesso recusado":"Acesso suspenso")+'</b><span>'+esc(b.dataset.nome||"")+'</span>'); loadPanel(); }).catch(()=>toast('<b>Não foi possível salvar</b><span>Confira a internet e as regras do Firestore.</span>')); return; }
   if(act==="zoom"){ overlay('<h3 id="dlg-t" class="sr">Tela do sistema</h3><figure class="zoomfig"><img src="'+esc(b.dataset.src)+'" alt="'+esc(b.dataset.cap)+'"><figcaption>📍 '+esc(b.dataset.cap)+'</figcaption></figure><button class="btn" id="dlg-ok">Fechar</button>'); $("#layer .dialog").classList.add("wide"); $("#dlg-ok").focus(); $("#dlg-ok").onclick=close; return; }
+  if(act==="go-certs"){ const el=document.getElementById("meus-certs"); if(el) el.scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  if(act==="cert-view"){ certificate(b.dataset.k); return; }
+  if(act==="cert-train"){ const ct=CERTS.find(c=>c.k===b.dataset.k); if(!ct) return; H.mode="treino"; store("agrix-mode","treino"); H.mods=ct.mods.slice(); store("agrix-mods",JSON.stringify(H.mods)); if(H.n<CERT_MIN_N) H.n=20; store("agrix-n",H.n); H.hint=""; clampQty(); goHome(); toast('<b>Treino do Certificado '+esc(ct.n)+'</b><span>Módulo selecionado. Escolha a quantidade (10 ou mais) e comece.</span>'); return; }
   if(S.screen==="inicio"){
     if(act==="mode"){ H.mode=b.dataset.v; store("agrix-mode",H.mode); H.hint=""; H.lhint=""; render(); return; }
     if(act==="set"){ H[b.dataset.k]=+b.dataset.v; store("agrix-"+b.dataset.k,b.dataset.v); render(); return; }
@@ -2455,7 +2494,6 @@ document.addEventListener("click", e=>{
   if(act==="home"){ goHome(); return; }
   if(act==="again"){ startGuarded(); return; }
   if(act==="gorev"){ H.mode="revanche"; store("agrix-mode","revanche"); newGame(); return; }
-  if(act==="cert"){ certificate(); return; }
   if(S.screen!=="jogo"||!G) return;
   const q=G.q;
   if(act==="quit"){ confirmBox("Sair da partida?", "O progresso desta partida será perdido.", "Sim, sair", "Continuar jogando", ()=>{ if(G.log.length) recordHistory(G.log, G.mods); goHome(); }); return; }

@@ -64,6 +64,13 @@ service cloud.firestore {
       allow delete: if gestor();
     }
 
+    // Certificados conquistados: cada pessoa grava os seus; o gestor vê todos.
+    match /certificados/{uid} {
+      allow read: if (signed() && request.auth.uid == uid) || gestor();
+      allow write: if aprovado() && request.auth.uid == uid;
+      allow delete: if gestor();
+    }
+
     // Lista de gestores adicionados: todos que entraram leem; só o gestor principal altera.
     match /config/gestores {
       allow read: if signed();
