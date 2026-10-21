@@ -1,4 +1,4 @@
-# Show do AgriX
+# AgriX Show
 
 Treinamento da equipe no estilo Show do Milhão, com as perguntas dos manuais do AgriX (ACM, Compras, Estoque e Vendas).
 

@@ -1,4 +1,4 @@
-// Show do AgriX — aviso por e-mail aos gestores quando alguém novo pede acesso.
+// AgriX Show — aviso por e-mail aos gestores quando alguém novo pede acesso.
 // Implantar como App da Web: Executar como "Eu", Quem pode acessar "Qualquer pessoa".
 const PROJETO = "show-do-agrix-b1145";
 const PRINCIPAL = ["dhiegocosta14@gmail.com"];
@@ -29,12 +29,12 @@ function doPost(e) {
     const link = SITE + "#painel";
     MailApp.sendEmail({
       to: dest.join(","),
-      subject: "Show do AgriX: " + nome + " pediu acesso",
-      name: "Show do AgriX",
+      subject: "AgriX Show: " + nome + " pediu acesso",
+      name: "AgriX Show",
       htmlBody:
         '<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#0b2545">' +
         '<h2 style="color:#1565c0;margin:0 0 12px">Novo pedido de acesso</h2>' +
-        '<p><b>' + esc(nome) + '</b> (' + esc(email) + ') entrou no Show do AgriX com o Google e está aguardando aprovação.</p>' +
+        '<p><b>' + esc(nome) + '</b> (' + esc(email) + ') entrou no AgriX Show com o Google e está aguardando aprovação.</p>' +
         '<p style="margin:24px 0"><a href="' + link + '" style="background:#1565c0;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:bold">Abrir o painel e aprovar</a></p>' +
         '<p style="font-size:13px;color:#555">No painel, vá em <b>Pessoas</b> e toque em <b>Aprovar</b> ou <b>Recusar</b>. Você precisa entrar com a sua conta Google de gestor.</p>' +
         '</div>'

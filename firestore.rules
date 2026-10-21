@@ -1,5 +1,5 @@
 rules_version = '2';
-// Regras de segurança do Show do AgriX.
+// Regras de segurança do AgriX Show.
 // Cole em: Firebase → Firestore Database → Regras → Publicar.
 // Troque o e-mail do gestor abaixo se for outro.
 service cloud.firestore {
