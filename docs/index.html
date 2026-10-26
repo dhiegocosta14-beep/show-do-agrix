@@ -630,6 +630,7 @@ body.gate #userbox{display:none}
 .certi.old{border-color:rgba(255,197,138,.6); background:linear-gradient(90deg, rgba(255,160,90,.14), rgba(255,160,90,.03))}
 .certi.old .cico{filter:none; opacity:1}
 .btn.warn{background:#f2c14e; color:#1c1300}
+.allmods-note{margin:0; padding:10px 12px; border-radius:12px; background:rgba(129,206,238,.10); border:1px solid rgba(129,206,238,.3); font-size:14px; line-height:1.45}
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -1467,7 +1468,9 @@ function shotHTML(s, small){
   return '<figure class="shot'+(small?' small':'')+'"><figcaption>📍 Onde fica no sistema: <b>'+esc(s.path)+'</b></figcaption>'+
     (s.img?'<button class="shotbtn" data-act="zoom" data-src="'+esc(s.img)+'" data-cap="'+esc(s.path)+'" aria-label="Ampliar a imagem da tela '+esc(s.n)+'"><img src="'+esc(s.img)+'" alt="Tela '+esc(s.n)+' no AgriX" width="'+s.w+'" height="'+s.h+'" loading="lazy"><span class="zoomhint">🔍 Ampliar</span></button>':'')+'</figure>';
 }
-function catOK(q){ return H.cat==="todas"||(H.cat==="caminho"?q.cat==="caminho":q.cat!=="caminho"); }
+function isShowSetup(){ return H.mode==="show"; }
+function effMods(){ return isShowSetup()?MODS.slice():H.mods; }
+function catOK(q){ return isShowSetup()||H.cat==="todas"||(H.cat==="caminho"?q.cat==="caminho":q.cat!=="caminho"); }
 /* ================= Estado da tela inicial ================= */
 const H={cat:store("agrix-cat")||"todas", mode:store("agrix-mode")||"show", n:+(store("agrix-n")||20), per:+(store("agrix-per")||5), timer:+(store("agrix-timer")||0), ln:+(store("agrix-ln")||10), lt:+(store("agrix-lt")||20),
   nome:store("agrix-nome")||"", players:loadJSON("agrix-players",["Equipe Azul","Equipe Verde"]), hint:"", code:"", lhint:""};
@@ -1478,7 +1481,7 @@ if(![5,10,15,20].includes(H.ln)) H.ln=10; if(![20,30,45].includes(H.lt)) H.lt=20
 if(!Array.isArray(H.players)||H.players.length<2) H.players=["Equipe Azul","Equipe Verde"];
 H.mods=loadJSON("agrix-mods",MODS.slice()); if(!Array.isArray(H.mods)) H.mods=MODS.slice(); H.mods=H.mods.filter(m=>MODS.includes(m)); if(!H.mods.length) H.mods=MODS.slice();
 (function(){ const hs=location.hash||""; const m=/^#?sala-?(\d{4})$/i.exec(hs); if(m){ H.mode="aovivo"; H.code=m[1]; } else if(/^#?aovivo$/i.test(hs)) H.mode="aovivo"; })();
-function poolSize(){ return BANK.filter(q=>H.mods.includes(q.m)&&catOK(q)).length; }
+function poolSize(){ const em=effMods(); return BANK.filter(q=>em.includes(q.m)&&catOK(q)).length; }
 function clampQty(){
   const max=poolSize();
   if(H.n>max){ H.n=[30,20,15,10,5].find(v=>v<=max)||5; store("agrix-n",H.n); }
@@ -1515,11 +1518,17 @@ function prevMonthKey(){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth
 function capFirst(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 function monthName(k){ const [y,m]=k.split("-"); return MESES[+m-1]+" de "+y; }
 function monthOf(r,k){ return ((r.meses||{})[k])||null; }
-function showKey(r,k){ const s=(monthOf(r,k||monthKey())||{}).show||{}; return [s.acertos||0, s.premio||0]; }
-function rankedFor(k){ return rankDocs.filter(r=>{ const m=monthOf(r,k); return m&&(m.show||m.treino); }).sort((a,b)=>{ const x=showKey(a,k), y=showKey(b,k); return y[0]-x[0]||y[1]-x[1]||((monthOf(b,k).treino||{}).pct||0)-((monthOf(a,k).treino||{}).pct||0); }); }
+/* Ranking do Show: quem acertou TODAS fica na frente (rodada maior vale mais); depois, mais acertos; no empate, o menor tempo. */
+function showScore(s){ if(!s) return [-1,-1,-1e15]; const full=s.n>0&&s.acertos>=s.n; return [full?1:0, full?s.n:(s.acertos||0), -(s.tempo==null?1e12:s.tempo)]; }
+function cmpScore(x,y){ return (y[0]-x[0])||(y[1]-x[1])||(y[2]-x[2]); }
+function betterShow(nw,old){ return cmpScore(showScore(nw),showScore(old))<0; }
+function showKey(r,k){ return showScore((monthOf(r,k||monthKey())||{}).show); }
+function fmtTempo(t){ if(t==null) return ""; t=Math.round(t); const m=Math.floor(t/60), sec=t%60; return m?(m+"min"+(sec?" "+String(sec).padStart(2,"0")+"s":"")):sec+"s"; }
+function showLine(s){ return s.acertos+'/'+s.n+' certas'+(s.tempo!=null?' · ⏱ '+fmtTempo(s.tempo):''); }
+function rankedFor(k){ return rankDocs.filter(r=>{ const m=monthOf(r,k); return m&&(m.show||m.treino); }).sort((a,b)=>{ const x=showKey(a,k), y=showKey(b,k); return cmpScore(x,y)||((monthOf(b,k).treino||{}).pct||0)-((monthOf(a,k).treino||{}).pct||0); }); }
 function medalIcons(list,max){ return (list||[]).filter(m=>MEDALS[m]).slice(0,max||6).map(m=>'<span title="'+esc(MEDALS[m].n+": "+MEDALS[m].d)+'">'+MEDALS[m].i+'</span>').join(""); }
 const RANK_PRIZES=[["🥇","1º lugar","Café da manhã na Padaria Moinho"],["🥈","2º lugar","Um Day Off"]];
-function prizesHTML(){ return '<div class="rprizes" aria-label="Prêmios do ranking">'+RANK_PRIZES.map(p=>'<div class="rprize"><span class="ri">'+p[0]+'</span><div><small>'+p[1]+'</small><b>'+p[2]+'</b></div></div>').join("")+'<p class="rrule">Ranking mensal: vale a classificação do Modo Show no mês, com mais acertos primeiro e, no empate, o maior prêmio. Todo dia 1º começa um ranking novo.</p></div>'; }
+function prizesHTML(){ return '<div class="rprizes" aria-label="Prêmios do ranking">'+RANK_PRIZES.map(p=>'<div class="rprize"><span class="ri">'+p[0]+'</span><div><small>'+p[1]+'</small><b>'+p[2]+'</b></div></div>').join("")+'<p class="rrule">Ranking mensal do Modo Show: na frente fica quem acertou todas as perguntas da rodada, e rodada maior vale mais (30 acima de 20, de 15 e de 10). Depois vem quem acertou mais. No empate, ganha quem respondeu em menos tempo. Todo dia 1º começa um ranking novo.</p></div>'; }
 function rankHTML(){ return prizesHTML()+rankListHTML(); }
 function rankListHTML(){
   if(rankState==="indisponivel") return '<p class="empty">Entre com a sua conta Google para ver o ranking.</p>';
@@ -1532,7 +1541,7 @@ function rankListHTML(){
   if(!rows.length) return h+'<p class="empty">Ninguém jogou neste mês ainda. Termine uma partida no Show para sair na frente!</p>';
   return h+'<div class="rank-head"><span>#</span><span>Jogador</span><span style="text-align:right">Show</span><span style="text-align:right">Treino</span></div><ol class="rank-list">'+
     rows.map((r,i)=>{ const mm=monthOf(r,mk), s=mm.show, t=mm.treino;
-      return '<li class="rank-row'+(r.id===myId?' me':'')+(i<2?' top'+(i+1):'')+'"><span class="rank-pos">'+(i<2?RANK_PRIZES[i][0]:(i+1))+'</span><span class="rank-name">'+esc(r.nome||"Sem nome")+'<small class="medals">'+medalIcons(r.medalhas)+'</small>'+(i<2&&s?'<small class="rtag">'+(i===0?'☕ Café da manhã na Padaria Moinho':'🌴 Day Off')+'</small>':'')+'</span><span class="rank-prize">'+(s?fmt(s.premio||0)+'<small>'+s.acertos+'/'+s.n+' certas</small>':'—')+'</span><span class="rank-tr">'+(t?t.pct+'%':'—')+'</span></li>'; }).join("")+'</ol>';
+      return '<li class="rank-row'+(r.id===myId?' me':'')+(i<2?' top'+(i+1):'')+'"><span class="rank-pos">'+(i<2?RANK_PRIZES[i][0]:(i+1))+'</span><span class="rank-name">'+esc(r.nome||"Sem nome")+'<small class="medals">'+medalIcons(r.medalhas)+'</small>'+(i<2&&s?'<small class="rtag">'+(i===0?'☕ Café da manhã na Padaria Moinho':'🌴 Day Off')+'</small>':'')+'</span><span class="rank-prize">'+(s?(s.acertos>=s.n?'✓ ':'')+s.acertos+'/'+s.n+'<small>'+(s.tempo!=null?'⏱ '+fmtTempo(s.tempo):fmt(s.premio||0))+'</small>':'—')+'</span><span class="rank-tr">'+(t?t.pct+'%':'—')+'</span></li>'; }).join("")+'</ol>';
 }
 function renderRank(){ document.querySelectorAll("[data-rank]").forEach(el=>el.innerHTML=rankHTML()); document.querySelectorAll("[data-champ]").forEach(el=>el.innerHTML=championHTML()); }
 /* Campeão do mês passado + galeria dos campeões */
@@ -1544,8 +1553,8 @@ function championHTML(){
   if(!top.length) h+='<div class="champ-empty"><span class="champ-trophy">🏆</span><p>Ainda não temos campeão. O primeiro será conhecido em <b>'+next.toLocaleDateString("pt-BR")+'</b>, com o fechamento do ranking de '+MESES[now.getMonth()]+'.</p></div>';
   else {
     const c=top[0], s=monthOf(c,pk).show;
-    h+='<div class="champ-main"><span class="champ-trophy" aria-hidden="true">🏆</span><div><small>'+capFirst(monthName(pk))+'</small><b class="champ-name">'+esc(c.nome||"Sem nome")+'</b><span class="champ-score">'+s.acertos+'/'+s.n+' certas · '+fmt(s.premio||0)+'</span><span class="champ-prize">☕ Ganhou: Café da manhã na Padaria Moinho</span>'+(c.medalhas&&c.medalhas.length?'<span class="champ-medals">'+medalIcons(c.medalhas,8)+'</span>':'')+'</div></div>';
-    if(top[1]){ const v=top[1], s2=monthOf(v,pk).show; h+='<div class="champ-vice"><span>🥈</span><div><b>'+esc(v.nome||"Sem nome")+'</b> <small>'+s2.acertos+'/'+s2.n+' certas · ganhou um Day Off 🌴</small></div></div>'; }
+    h+='<div class="champ-main"><span class="champ-trophy" aria-hidden="true">🏆</span><div><small>'+capFirst(monthName(pk))+'</small><b class="champ-name">'+esc(c.nome||"Sem nome")+'</b><span class="champ-score">'+showLine(s)+'</span><span class="champ-prize">☕ Ganhou: Café da manhã na Padaria Moinho</span>'+(c.medalhas&&c.medalhas.length?'<span class="champ-medals">'+medalIcons(c.medalhas,8)+'</span>':'')+'</div></div>';
+    if(top[1]){ const v=top[1], s2=monthOf(v,pk).show; h+='<div class="champ-vice"><span>🥈</span><div><b>'+esc(v.nome||"Sem nome")+'</b> <small>'+showLine(s2)+' · ganhou um Day Off 🌴</small></div></div>'; }
   }
   const months=[...new Set(rankDocs.flatMap(r=>Object.keys(r.meses||{})))].filter(k=>k<pk).sort().reverse().slice(0,6);
   const gal=months.map(k=>{ const w=rankedFor(k).filter(r=>monthOf(r,k).show)[0]; return w?'<li><span>'+capFirst(monthName(k))+'</span><b>🥇 '+esc(w.nome||"Sem nome")+'</b></li>':''; }).join("");
@@ -1564,10 +1573,10 @@ async function saveResult(premio, acertos, novas){
     const cur=await ref.get(); const d=cur.exists?(cur.data()||{}):{};
     const doc={nome:(H.nome||"Sem nome").slice(0,40), jogos:(d.jogos||0)+1, atualizadoEm:new Date().toISOString(), medalhas:[...new Set((d.medalhas||[]).concat([...localMed]))].filter(m=>MEDALS[m])};
     if(d.show) doc.show=d.show; if(d.treino) doc.treino=d.treino;
-    if(G.mode==="show"){ const s=d.show||{acertos:-1,premio:-1}; if(acertos>s.acertos||(acertos===s.acertos&&premio>s.premio)) doc.show={premio, acertos, n:G.n}; }
+    if(G.mode==="show"){ const ns={premio, acertos, n:G.n, tempo:G.result.tempo}; if(betterShow(ns,d.show)) doc.show=ns; }
     else if(G.mode==="treino"){ const pct=Math.round(acertos/G.n*100), t=d.treino||{pct:-1,n:0}; if(pct>t.pct||(pct===t.pct&&G.n>t.n)) doc.treino={pct, acertos, n:G.n}; }
     const mk=monthKey(); doc.meses=Object.assign({}, d.meses||{}); const mm=Object.assign({}, doc.meses[mk]||{});
-    if(G.mode==="show"){ const s=mm.show||{acertos:-1,premio:-1}; if(acertos>s.acertos||(acertos===s.acertos&&premio>s.premio)) mm.show={premio, acertos, n:G.n}; }
+    if(G.mode==="show"){ const ns={premio, acertos, n:G.n, tempo:G.result.tempo}; if(betterShow(ns,mm.show)) mm.show=ns; }
     else if(G.mode==="treino"){ const pct=Math.round(acertos/G.n*100), t=mm.treino||{pct:-1,n:0}; if(pct>t.pct||(pct===t.pct&&G.n>t.n)) mm.treino={pct, acertos, n:G.n}; }
     mm.jogos=(mm.jogos||0)+1; doc.meses[mk]=mm;
     await ref.set(doc);
@@ -1668,8 +1677,9 @@ function newGame(){
   const grp=H.mode==="grupo", rev=H.mode==="revanche";
   let list, rest=[];
   if(rev){ list=shuffle(erradasPool()).slice(0,30); }
-  else { const total=grp?H.players.length*H.per:H.n; const pk=pickQuestions(total, H.mods, getSeen()); list=pk.list; rest=pk.rest; }
-  G={mode:H.mode, mods:H.mods.slice(), n:list.length, list, rest, idx:0, q:prep(list[0]), ladder:makeLadder(list.length), timer:H.timer, left:H.timer,
+  else { const total=grp?H.players.length*H.per:H.n; const pk=pickQuestions(total, effMods(), getSeen()); list=pk.list; rest=pk.rest; }
+  const tm=H.mode==="show"?0:H.timer;
+  G={mode:H.mode, mods:effMods(), n:list.length, list, rest, idx:0, q:prep(list[0]), ladder:makeLadder(list.length), timer:tm, left:tm, tempoMs:0,
      players:grp?H.players.map((nm,i)=>({nome:nm||("Jogador "+(i+1)), cor:COLORS[i%COLORS.length], pts:0, ok:0, used:{cartas:false,placas:false,univ:false}})):null,
      pulosMax:list.length>=15?3:list.length>=10?2:1, used:{pular:0,cartas:false,placas:false,univ:false},
      gone:[], phase:"ask", chosen:null, log:[], saveMsg:"", streak:0, maxStreak:0, fast:0, anyHelp:false, enter:true,
@@ -1713,11 +1723,11 @@ function reveal(i){
   const quick=G.mode==="treino"||G.mode==="revanche";
   const wait=quick?700:i<0?400:2400;
   if(i>=0&&!quick) sfx.roll(wait/1000);
-  const elapsed=Date.now()-(G.qStart||Date.now());
+  const elapsed=Date.now()-(G.qStart||Date.now()); G.tempoMs=(G.tempoMs||0)+elapsed;
   setTimeout(()=>{
     G.phase="done";
     const ok=logAnswer(false), q=G.q;
-    if(ok){ G.streak++; G.maxStreak=Math.max(G.maxStreak,G.streak); if(G.timer&&elapsed<5000) G.fast++; if(G.mode==="revanche") G.recovered.add(q.src.id); }
+    if(ok){ G.streak++; G.maxStreak=Math.max(G.maxStreak,G.streak); if((G.timer||G.mode==="show")&&elapsed<5000) G.fast++; if(G.mode==="revanche") G.recovered.add(q.src.id); }
     else { G.streak=0;
       if(G.mode==="revanche"){ const r=G.retries[q.src.id]||0; if(r<2){ G.retries[q.src.id]=r+1; G.list.push(q.src); G.n=G.list.length; } } }
     if(isMillion()&&ok){ render(); finish(G.ladder[G.idx],"Você ganhou o milhão!"); return; }
@@ -1742,7 +1752,7 @@ async function nextQuestion(q){
 }
 function finish(premio, motivo){
   stopTimer(); musicStop();
-  G.result={premio, acertos:G.log.filter(l=>l.ok).length, motivo};
+  G.result={premio, acertos:G.log.filter(l=>l.ok).length, motivo, tempo:Math.max(1,Math.round((G.tempoMs||0)/1000))};
   if(G.mode==="treino"){ const ct=certForMods(G.mods), pc=Math.round(G.result.acertos/G.n*100); if(ct&&G.n>=CERT_MIN_N&&pc>=CERT_MIN_PCT) saveCert(ct); }
   if(G.mode!=="grupo"||true) recordHistory(G.log, G.mods);
   S.screen="fim"; G.saveMsg="";
@@ -1970,7 +1980,7 @@ function modsField(){
     '<button class="opt" data-act="allmods"'+(H.mods.length===MODS.length?' disabled':'')+'>Todos</button></div></div>';
 }
 const MODE_INFO={
-  show:["Show","valendo prêmios","Individual, valendo prêmios até o milhão. Errou, o jogo acaba. Tem ajudas, medalhas e entra no ranking."],
+  show:["Show","valendo prêmios","Individual, valendo prêmios até o milhão, com perguntas de todos os módulos. Errou, o jogo acaba. Não tem limite de tempo, mas o tempo total conta no ranking."],
   treino:["Treino","nota por módulo","Individual, sem prêmios. Você responde todas, vê a explicação e onde fica cada tela, e conquista o certificado do módulo quando treina só ele, com 10+ perguntas e 80% de acerto."],
   revanche:["Revanche","só as que errou","Volta nas perguntas que você errou. Errou de novo? Ela volta no fim da fila até você acertar."],
   grupo:["Grupo","mesma tela","Várias pessoas ou equipes na mesma tela, uma de cada vez. Acerto vale pontos conforme a dificuldade."],
@@ -2006,9 +2016,11 @@ function homeHTML(){
     '<p class="lead">'+BANK.length+' perguntas dos módulos ACM, Compras, Estoque, Vendas, Pecuária, Cadastros Básicos e Agrícola, da mais fácil à mais difícil.</p>'+'<p class="certlink"><button class="linkbtn" data-act="go-certs">🎓 Meus certificados: '+CERTS.filter(c=>certState(c)==="ok").length+' de '+CERTS.length+'</button></p>'+
     '<div class="seg" role="group" aria-label="Modo de jogo">'+Object.keys(MODE_INFO).map(k=>'<button data-act="mode" data-v="'+k+'" aria-pressed="'+(m===k)+'">'+MODE_INFO[k][0]+'<small>'+MODE_INFO[k][1]+'</small></button>').join("")+'</div>'+
     '<p class="mode-desc">'+MODE_INFO[m][2]+'</p>';
+  if(m==="show"&&H.n<10){ H.n=10; store("agrix-n",H.n); }
   if(m==="aovivo") h+=liveSetupHTML();
   else {
-    h+=modsField()+catField();
+    if(m==="show") h+='<div class="field"><span>Módulos</span><p class="allmods-note">📚 <b>Todos os módulos</b> entram no Show: '+esc(MODS.join(", "))+' ('+BANK.length+' perguntas). Quem joga precisa saber de tudo.</p></div>';
+    else h+=modsField()+catField();
     if(m==="grupo"){
       h+='<div class="field"><span>Jogadores ou equipes</span><div class="players">'+H.players.map((p,i)=>'<div class="prow"><span class="dot" style="background:'+COLORS[i]+'"></span><input type="text" id="pl-'+i+'" data-pl="'+i+'" maxlength="30" value="'+esc(p)+'" aria-label="Nome do jogador '+(i+1)+'" placeholder="Jogador '+(i+1)+'"><button class="xbtn" data-act="rmp" data-i="'+i+'" aria-label="Remover jogador '+(i+1)+'"'+(H.players.length<=2?' disabled':'')+'>×</button></div>').join("")+
         '<button class="addp" data-act="addp"'+(H.players.length>=8?' disabled':'')+'>+ Adicionar jogador</button></div></div>';
@@ -2016,9 +2028,9 @@ function homeHTML(){
     } else {
       if(AUTH.user) h+='<div class="field"><span>Jogando como</span><div class="playing">'+((AUTH.profile||{}).foto?'<img src="'+esc(AUTH.profile.foto)+'" alt="" referrerpolicy="no-referrer">':'')+'<b>'+esc(H.nome)+'</b><small>'+esc((AUTH.profile||{}).email||"")+'</small></div></div>';
       else h+='<div class="field"><label for="nome" style="font-weight:600">Seu nome</label><input type="text" id="nome" maxlength="40" autocomplete="name" placeholder="Ex.: Ana — Almoxarifado" value="'+esc(H.nome)+'"><small class="mode-desc" style="margin:0">Sem entrar com Google o resultado não é salvo.</small></div>';
-      if(m!=="revanche") h+='<div class="field"><span>Quantidade de perguntas</span>'+optBtns("n",[5,10,15,20,30],H.n,v=>v,v=>v>poolSize())+'</div>';
+      if(m!=="revanche") h+='<div class="field"><span>Quantidade de perguntas</span>'+optBtns("n",m==="show"?[10,15,20,30]:[5,10,15,20,30],H.n,v=>v,v=>v>poolSize())+(m==="show"?'<small class="mode-desc" style="margin:4px 0 0">Sem limite de tempo, mas o tempo total conta no ranking. Rodada maior, acertando todas, vale mais.</small>':'')+'</div>';
     }
-    h+='<div class="field"><span>Tempo para responder</span>'+optBtns("timer",[0,30,60],H.timer,v=>v?v+" segundos":"Sem limite")+'</div>';
+    if(m!=="show") h+='<div class="field"><span>Tempo para responder</span>'+optBtns("timer",[0,30,60],H.timer,v=>v?v+" segundos":"Sem limite")+'</div>';
     h+='<div class="seen"><span id="seen-info">'+esc(seenInfo())+'</span>'+(m==="revanche"?'':'<button class="linkbtn" data-act="clearseen">Zerar histórico</button>')+'</div>';
     if(m==="show") h+=chancesHTML();
     h+='<button class="go" data-act="start"'+(m==="show"&&db&&myId&&!chancesLeft()?' disabled':'')+'>'+(m==="revanche"?'Começar a revanche':(m==="show"&&db&&myId&&!chancesLeft()?'Sem chances do Show este mês':'Começar o jogo'))+'</button>';
@@ -2027,7 +2039,7 @@ function homeHTML(){
   h+='<div class="side-col"><div class="card champ" data-champ>'+championHTML()+'</div><div class="card" id="meus-certs">'+certsHTML()+'</div>';
   if(m==="aovivo") h+='<div class="card"><h2>Como funciona o Ao vivo</h2><ul class="rules"><li><b>No telão:</b> o dono do jogo cria a sala e mostra o código e o QR Code.</li><li><b>No celular:</b> cada um abre o link, toca em Entrar na sala e digita o código e o nome.</li><li><b>Pontos:</b> acerto vale de 500 a 1.000, conforme a rapidez. 3 seguidas dão +100.</li><li><b>Requisito:</b> cada um entra com a própria conta Google.</li></ul></div>';
   else if(m==="grupo") h+='<div class="card"><h2>Como funciona o Grupo</h2><ul class="rules"><li><b>Vez de cada um:</b> as perguntas passam de jogador em jogador.</li><li><b>Pontos:</b> fácil 100, média 200, difícil 300.</li><li><b>Ajudas:</b> cada jogador tem cartas, placas e universitários uma vez.</li><li><b>Fim:</b> pódio, confete e revisão das respostas.</li></ul></div>';
-  else h+='<div class="card"><div class="presenter-intro">'+mascotHTML()+'</div><h2 style="margin-top:14px">Regras do Show</h2><ul class="rules"><li><b>Acertou:</b> sobe para o próximo prêmio.</li><li><b>Parou:</b> leva o prêmio que já tem.</li><li><b>Errou:</b> leva metade. Na pergunta do milhão, perde tudo.</li><li><b>Ajudas:</b> pulos, cartas, placas e universitários. Não valem no milhão.</li><li><b>Chances:</b> '+SHOW_MAX+' partidas do Show por mês. Vale o melhor resultado no ranking.</li></ul><p class="medal-strip" title="Medalhas que dá para ganhar">'+Object.values(MEDALS).map(x=>'<span title="'+esc(x.n+": "+x.d)+'">'+x.i+'</span>').join("")+'</p></div>';
+  else h+='<div class="card"><div class="presenter-intro">'+mascotHTML()+'</div><h2 style="margin-top:14px">Regras do Show</h2><ul class="rules"><li><b>Ranking:</b> acertar todas vale mais, e rodada maior fica na frente. No empate, ganha quem foi mais rápido.</li><li><b>Acertou:</b> sobe para o próximo prêmio.</li><li><b>Parou:</b> leva o prêmio que já tem.</li><li><b>Errou:</b> leva metade. Na pergunta do milhão, perde tudo.</li><li><b>Ajudas:</b> pulos, cartas, placas e universitários. Não valem no milhão.</li><li><b>Chances:</b> '+SHOW_MAX+' partidas do Show por mês. Vale o melhor resultado no ranking.</li></ul><p class="medal-strip" title="Medalhas que dá para ganhar">'+Object.values(MEDALS).map(x=>'<span title="'+esc(x.n+": "+x.d)+'">'+x.i+'</span>').join("")+'</p></div>';
   h+='<div class="card"><h2>Ranking da equipe</h2><div data-rank></div></div></div></section>';
   return h;
 }
@@ -2104,7 +2116,7 @@ function endHTML(){
     h+=podiumHTML(rank.map(p=>({nome:p.nome, cor:p.cor, sub:p.pts+' pts'})));
     h+='<div style="overflow-x:auto"><table class="table"><thead><tr><th>#</th><th>Jogador</th><th>Acertos</th><th>Pontos</th></tr></thead><tbody>'+rank.map((p,i)=>'<tr><td>'+(i+1)+'º</td><td><span class="dot inl" style="background:'+p.cor+'"></span>'+esc(p.nome)+'</td><td>'+p.ok+'/'+H.per+'</td><td><b>'+p.pts+'</b></td></tr>').join("")+'</tbody></table></div>';
   } else if(show){
-    h+='<div class="tag">'+esc(r.motivo)+'</div><div class="big">'+fmt(r.premio)+'</div><p class="lead" style="margin:0 0 14px">'+esc(H.nome)+', você acertou '+r.acertos+' de '+G.n+' perguntas.</p>';
+    h+='<div class="tag">'+esc(r.motivo)+'</div><div class="big">'+fmt(r.premio)+'</div><p class="lead" style="margin:0 0 14px">'+esc(H.nome)+', você acertou '+r.acertos+' de '+G.n+' perguntas em ⏱ '+fmtTempo(r.tempo)+'.'+(r.acertos>=G.n?' Acertou todas!':'')+'</p>';
     if(r.premio>0) h+=chequeHTML(r.premio);
   } else if(G.mode==="revanche"){
     h+='<div class="tag">Revanche</div><div class="big">'+G.recovered.size+'/'+G.revTotal+'</div><p class="lead" style="margin:0">'+esc(H.nome)+', você recuperou '+G.recovered.size+' de '+G.revTotal+' perguntas que tinha errado.'+(G.recovered.size===G.revTotal?' Lista zerada!':' As que faltam continuam na sua lista.')+'</p>';
@@ -2533,7 +2545,7 @@ document.addEventListener("click", e=>{
   if(act==="pular"){
     confirmBox("Pular esta pergunta?", "Você recebe outra pergunta valendo o mesmo prêmio. Restam "+(G.pulosMax-G.used.pular)+" pulo(s).", "Sim, pular", "Não", ()=>{
       if(!G.rest.length) return; const d=q.src.d; let k=G.rest.findIndex(x=>x.d===d); if(k<0) k=0;
-      stopTimer(); logAnswer(true,"Pulada."); G.used.pular++; G.anyHelp=true; const nq=G.rest.splice(k,1)[0]; G.list[G.idx]=nq; say("Pulou! Outra pergunta valendo o mesmo prêmio."); nextQuestion(nq);
+      stopTimer(); G.tempoMs=(G.tempoMs||0)+(Date.now()-(G.qStart||Date.now())); logAnswer(true,"Pulada."); G.used.pular++; G.anyHelp=true; const nq=G.rest.splice(k,1)[0]; G.list[G.idx]=nq; say("Pulou! Outra pergunta valendo o mesmo prêmio."); nextQuestion(nq);
     });
     return;
   }
